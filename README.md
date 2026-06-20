@@ -4,9 +4,8 @@ Financial Operations Platform
 
 > Evolved from a working Invoice Generator into a unified procurement and accounts management platform. Demonstrates a complete procurement lifecycle — from requisition to payment — with automated 3-way matching as the central feature.
 
-**Live Demo:** https://invoice-generator-roan-seven.vercel.app  
-**API:** https://invoice-generator-c6r8.onrender.com  
-**Repo:** https://github.com/ShubhAgarwal-03/Invoice-Generator
+
+**Repo:** https://github.com/ShubhAgarwal-03/FinOps
 
 > ⚠️ API hosted on Render free tier — first request may take 30–60 seconds (cold start).
 
