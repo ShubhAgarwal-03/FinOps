@@ -1,0 +1,768 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// prisma/schema.prisma
+// Financial Operations Platform — PostgreSQL
+//
+// Design principles:
+//   • Separate AR and AP domain tables — no shared invoice_type discriminator
+//   • All monetary amounts stored as Decimal(12,2)
+//   • Enum-guarded statuses — invalid states blocked at DB level
+//   • Soft delete via is_deleted + deleted_at on all user-facing master entities
+//   • Snapshots stored as Json — point-in-time copies of customer/vendor
+//   • Append-only PO amendments — direct PO edits are blocked at app layer
+//   • match_results drive the vendor payment gate
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ENUMS
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Shared ──────────────────────────────────────────────────────────────────
+
+enum PaymentMethod {
+  cash
+  bank_transfer
+  upi
+  cheque
+  card
+  other
+}
+
+enum PaymentStatus {
+  unpaid
+  partial
+  paid
+  overpaid
+}
+
+enum CustomerType {
+  individual
+  business
+}
+
+enum LedgerDirection {
+  DEBIT
+  CREDIT
+}
+
+enum CustomerLedgerEntryType {
+  INVOICE_RAISED
+  PAYMENT_RECEIVED
+  CREDIT_NOTE
+}
+
+enum VendorLedgerEntryType {
+  INVOICE_RECEIVED
+  PAYMENT_MADE
+  DEBIT_NOTE
+}
+
+// ── AR ──────────────────────────────────────────────────────────────────────
+
+enum SalesInvoiceStatus {
+  draft
+  sent
+  paid
+  void
+}
+
+// ── AP — Requisition ──────────────────────────────────────────────────────
+
+enum RequisitionStatus {
+  draft
+  pending_approval
+  approved
+  rejected
+  converted_to_rfp // locked once RFP is created
+}
+
+// ── AP — RFP ──────────────────────────────────────────────────────────────
+
+enum RFPStatus {
+  open // accepting vendor quotes
+  evaluating // quotes received, scoring in progress
+  vendor_selected // winning vendor chosen
+  closed // PO generated from this RFP
+}
+
+// ── AP — Purchase Order ────────────────────────────────────────────────────
+
+enum POStatus {
+  draft // editable
+  issued // locked — immutable after this point
+  partially_received
+  fully_received
+  closed
+  cancelled
+}
+
+// ── AP — GRN ──────────────────────────────────────────────────────────────
+
+enum GRNStatus {
+  draft
+  confirmed // quantities locked, triggers match
+}
+
+// ── AP — Vendor Invoice ────────────────────────────────────────────────────
+
+enum VendorInvoiceStatus {
+  draft
+  submitted // vendor submitted, awaiting match
+  matched // 3-way match passed
+  mismatched // 3-way match failed
+  disputed // dispute raised
+  approved // finance approved payment
+  rejected // finance rejected
+  paid // payment recorded
+  void
+}
+
+// ── AP — 3-Way Match ────────────────────────────────────────────────────────
+
+enum MatchStatus {
+  matched
+  mismatched
+}
+
+// ── AP — Dispute ────────────────────────────────────────────────────────────
+
+enum DisputeStatus {
+  open
+  resolved_accept // accept vendor's quantity → approve payment
+  resolved_reject // reject invoice → vendor to resubmit
+  resolved_amend_po // raise PO amendment to correct PO qty
+}
+
+enum DisputeParty {
+  vendor // vendor billed wrong quantity
+  internal // we received wrong quantity (GRN error)
+  purchase_order // PO was raised with wrong quantity
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED / REFERENCE TABLES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model CompanySettings {
+  id             String   @id @default(cuid())
+  name           String
+  address        String?
+  email          String?
+  phone          String?
+  logo_url       String?
+  gstin          String?
+  pan            String?
+  bank_name      String?
+  account_number String?
+  ifsc_code      String?
+  branch         String?
+  // GST state — used by gst-determiner for all outgoing documents
+  state          String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@map("company_settings")
+}
+
+model Item {
+  id              String    @id @default(cuid())
+  name            String
+  description     String?
+  unit_price      Decimal   @db.Decimal(12, 2)
+  tax_percent     Decimal   @default(0) @db.Decimal(5, 2)
+  hsn_sac         String?
+  unit_of_measure String?
+  item_type       String    @default("simple")
+  currency        String    @default("INR")
+  is_deleted      Boolean   @default(false)
+  deleted_at      DateTime?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  // Used by both AR line items and AP requisition/PO items
+  sales_invoice_items  SalesInvoiceItem[]
+  requisition_items    RequisitionItem[]
+  po_items             POItem[]
+  grn_items            GRNItem[]
+  vendor_invoice_items VendorInvoiceItem[]
+
+  @@index([is_deleted])
+  @@map("items")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ACCOUNTS RECEIVABLE
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Customers ─────────────────────────────────────────────────────────────
+
+model Customer {
+  id                  String       @id @default(cuid())
+  customer_code       String?
+  customer_type       CustomerType @default(business)
+  customer_name       String
+  company_name        String?
+  email               String?
+  phone               String?
+  // Legacy flat address kept for backwards compat
+  address             String?
+  billing_address_1   String?
+  billing_address_2   String?
+  city                String?
+  state               String?
+  postal_code         String?
+  country             String       @default("IN")
+  currency            String       @default("INR")
+  gstin               String?
+  pan                 String?
+  registration_number String?
+  is_deleted          Boolean      @default(false)
+  deleted_at          DateTime?
+  created_at          DateTime     @default(now())
+  updated_at          DateTime     @updatedAt
+
+  sales_invoices  SalesInvoice[]
+  customer_ledger CustomerLedger[]
+
+  @@index([is_deleted])
+  @@index([customer_name])
+  @@map("customers")
+}
+
+// ── Sales Invoices ────────────────────────────────────────────────────────
+
+model SalesInvoice {
+  id                   String             @id @default(cuid())
+  invoice_number       String             @unique
+  po_so_number         String?
+  customer_id          String
+  customer             Customer           @relation(fields: [customer_id], references: [id])
+  // Point-in-time copy of customer — historical invoices never affected by customer edits
+  customer_snapshot    Json
+  status               SalesInvoiceStatus @default(draft)
+  issue_date           DateTime
+  due_date             DateTime?
+  is_interstate        Boolean            @default(true)
+  tax_exempt           Boolean            @default(false)
+  subtotal             Decimal            @db.Decimal(12, 2)
+  discount_percent     Decimal            @default(0) @db.Decimal(5, 2)
+  discount_amount      Decimal            @default(0) @db.Decimal(12, 2)
+  tax_total            Decimal            @db.Decimal(12, 2)
+  total                Decimal            @db.Decimal(12, 2)
+  amount_paid          Decimal            @default(0) @db.Decimal(12, 2)
+  balance_due          Decimal            @db.Decimal(12, 2)
+  payment_status       PaymentStatus      @default(unpaid)
+  shipping_address     String?
+  notes                String?
+  payment_terms        String?
+  terms_and_conditions String?
+  is_deleted           Boolean            @default(false)
+  deleted_at           DateTime?
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
+
+  items           SalesInvoiceItem[]
+  payments        SalesPayment[]
+  customer_ledger CustomerLedger[]
+
+  @@index([customer_id])
+  @@index([status])
+  @@index([payment_status])
+  @@index([issue_date])
+  @@index([is_deleted])
+  @@map("sales_invoices")
+}
+
+model SalesInvoiceItem {
+  id          String       @id @default(cuid())
+  invoice_id  String
+  invoice     SalesInvoice @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  item_id     String?
+  item        Item?        @relation(fields: [item_id], references: [id])
+  description String
+  hsn_sac     String?
+  quantity    Decimal      @db.Decimal(10, 3)
+  unit_price  Decimal      @db.Decimal(12, 2)
+  // tax_lines stored as Json array: [{ name, percent, tax_amount }]
+  tax_lines   Json         @default("[]")
+  line_total  Decimal      @db.Decimal(12, 2)
+  sort_order  Int          @default(0)
+
+  @@index([invoice_id])
+  @@map("sales_invoice_items")
+}
+
+// ── Sales Payments ────────────────────────────────────────────────────────
+
+model SalesPayment {
+  id         String        @id @default(cuid())
+  invoice_id String
+  invoice    SalesInvoice  @relation(fields: [invoice_id], references: [id])
+  amount     Decimal       @db.Decimal(12, 2)
+  method     PaymentMethod
+  paid_at    DateTime      @default(now())
+  notes      String?
+  created_at DateTime      @default(now())
+  updated_at DateTime      @updatedAt
+
+  @@index([invoice_id])
+  @@map("sales_payments")
+}
+
+// ── Customer Ledger ───────────────────────────────────────────────────────
+
+model CustomerLedger {
+  id               String                  @id @default(cuid())
+  customer_id      String
+  customer         Customer                @relation(fields: [customer_id], references: [id])
+  sales_invoice_id String?
+  sales_invoice    SalesInvoice?           @relation(fields: [sales_invoice_id], references: [id])
+  entry_type       CustomerLedgerEntryType
+  direction        LedgerDirection
+  amount           Decimal                 @db.Decimal(12, 2)
+  description      String
+  reference_number String?
+  entry_date       DateTime
+  created_at       DateTime                @default(now())
+
+  @@index([customer_id])
+  @@index([entry_date])
+  @@map("customer_ledger")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ACCOUNTS PAYABLE
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Vendors ───────────────────────────────────────────────────────────────
+
+model Vendor {
+  id                String    @id @default(cuid())
+  vendor_code       String?
+  vendor_name       String
+  company_name      String?
+  email             String?
+  phone             String?
+  address           String?
+  billing_address_1 String?
+  billing_address_2 String?
+  city              String?
+  state             String?
+  postal_code       String?
+  country           String    @default("IN")
+  currency          String    @default("INR")
+  gstin             String?
+  pan               String?
+  payment_terms     String?
+  is_deleted        Boolean   @default(false)
+  deleted_at        DateTime?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  vendor_quotes   VendorQuote[]
+  purchase_orders PurchaseOrder[]
+  vendor_invoices VendorInvoice[]
+  vendor_payments VendorPayment[]
+  vendor_ledger   VendorLedger[]
+
+  @@index([is_deleted])
+  @@index([vendor_name])
+  @@map("vendors")
+}
+
+// ── Requisitions ──────────────────────────────────────────────────────────
+
+model Requisition {
+  id               String            @id @default(cuid())
+  req_number       String            @unique
+  title            String
+  description      String?
+  status           RequisitionStatus @default(draft)
+  requested_by     String? // role label e.g. 'Consumer'
+  approved_by      String? // role label e.g. 'Manager'
+  approved_at      DateTime?
+  rejection_reason String?
+  required_by      DateTime?
+  created_at       DateTime          @default(now())
+  updated_at       DateTime          @updatedAt
+
+  items RequisitionItem[]
+  rfps  RFP[]
+
+  @@index([status])
+  @@map("requisitions")
+}
+
+model RequisitionItem {
+  id                   String      @id @default(cuid())
+  requisition_id       String
+  requisition          Requisition @relation(fields: [requisition_id], references: [id], onDelete: Cascade)
+  item_id              String?
+  item                 Item?       @relation(fields: [item_id], references: [id])
+  description          String
+  quantity             Decimal     @db.Decimal(10, 3)
+  unit_of_measure      String?
+  estimated_unit_price Decimal?    @db.Decimal(12, 2)
+  notes                String?
+  sort_order           Int         @default(0)
+
+  @@index([requisition_id])
+  @@map("requisition_items")
+}
+
+// ── RFP ───────────────────────────────────────────────────────────────────
+
+model RFP {
+  id             String      @id @default(cuid())
+  rfp_number     String      @unique
+  requisition_id String
+  requisition    Requisition @relation(fields: [requisition_id], references: [id])
+  title          String
+  description    String?
+  status         RFPStatus   @default(open)
+  deadline       DateTime?
+  created_at     DateTime    @default(now())
+  updated_at     DateTime    @updatedAt
+
+  vendor_quotes     VendorQuote[]
+  quote_evaluations QuoteEvaluation[]
+  // Back-relation required because PurchaseOrder.rfp is an explicit relation
+  purchase_orders   PurchaseOrder[]
+
+  @@index([requisition_id])
+  @@index([status])
+  @@map("rfps")
+}
+
+model VendorQuote {
+  id             String   @id @default(cuid())
+  rfp_id         String
+  rfp            RFP      @relation(fields: [rfp_id], references: [id])
+  vendor_id      String
+  vendor         Vendor   @relation(fields: [vendor_id], references: [id])
+  unit_price     Decimal  @db.Decimal(12, 2)
+  total_amount   Decimal  @db.Decimal(12, 2)
+  lead_time_days Int?
+  validity_days  Int?
+  notes          String?
+  submitted_at   DateTime @default(now())
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  evaluation QuoteEvaluation?
+
+  @@unique([rfp_id, vendor_id])
+  @@index([rfp_id])
+  @@map("vendor_quotes")
+}
+
+model QuoteEvaluation {
+  id              String      @id @default(cuid())
+  rfp_id          String
+  rfp             RFP         @relation(fields: [rfp_id], references: [id])
+  vendor_quote_id String      @unique
+  vendor_quote    VendorQuote @relation(fields: [vendor_quote_id], references: [id])
+  score           Int? // 1–100
+  price_score     Int?
+  quality_score   Int?
+  lead_time_score Int?
+  notes           String?
+  is_selected     Boolean     @default(false)
+  selected_at     DateTime?
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
+
+  @@index([rfp_id])
+  @@map("quote_evaluations")
+}
+
+// ── Purchase Orders ───────────────────────────────────────────────────────
+
+model PurchaseOrder {
+  id                String    @id @default(cuid())
+  po_number         String    @unique
+  vendor_id         String
+  vendor            Vendor    @relation(fields: [vendor_id], references: [id])
+  // Snapshot of vendor at time of PO creation
+  vendor_snapshot   Json
+  rfp_id            String?
+  rfp               RFP?      @relation(fields: [rfp_id], references: [id])
+  status            POStatus  @default(draft)
+  is_interstate     Boolean   @default(true)
+  subtotal          Decimal   @db.Decimal(12, 2)
+  discount_percent  Decimal   @default(0) @db.Decimal(5, 2)
+  discount_amount   Decimal   @default(0) @db.Decimal(12, 2)
+  tax_total         Decimal   @db.Decimal(12, 2)
+  total             Decimal   @db.Decimal(12, 2)
+  notes             String?
+  payment_terms     String?
+  delivery_address  String?
+  // Timestamp when PO was issued (locked). NULL = still editable draft.
+  issued_at         DateTime?
+  expected_delivery DateTime?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  items           POItem[]
+  amendments      POAmendment[]
+  grns            GRN[]
+  vendor_invoices VendorInvoice[]
+
+  @@index([vendor_id])
+  @@index([status])
+  @@index([issued_at])
+  @@map("purchase_orders")
+}
+
+model POItem {
+  id          String        @id @default(cuid())
+  po_id       String
+  po          PurchaseOrder @relation(fields: [po_id], references: [id], onDelete: Cascade)
+  item_id     String?
+  item        Item?         @relation(fields: [item_id], references: [id])
+  description String
+  hsn_sac     String?
+  quantity    Decimal       @db.Decimal(10, 3)
+  unit_price  Decimal       @db.Decimal(12, 2)
+  tax_lines   Json          @default("[]")
+  line_total  Decimal       @db.Decimal(12, 2)
+  sort_order  Int           @default(0)
+
+  grn_items            GRNItem[]
+  vendor_invoice_items VendorInvoiceItem[]
+
+  @@index([po_id])
+  @@map("po_items")
+}
+
+// ── PO Amendments ─────────────────────────────────────────────────────────
+// Append-only. Direct edits to PurchaseOrder are PROHIBITED after issued_at.
+
+model POAmendment {
+  id               String        @id @default(cuid())
+  po_id            String
+  po               PurchaseOrder @relation(fields: [po_id], references: [id])
+  amendment_number Int // 1, 2, 3 … per PO
+  reason           String
+  // Full snapshot of what changed: { field, old_value, new_value }[]
+  changes          Json
+  amended_by       String? // role label
+  created_at       DateTime      @default(now())
+
+  @@unique([po_id, amendment_number])
+  @@index([po_id])
+  @@map("po_amendments")
+}
+
+// ── GRN (Goods Receipt Notes) ─────────────────────────────────────────────
+
+model GRN {
+  id          String        @id @default(cuid())
+  grn_number  String        @unique
+  po_id       String
+  po          PurchaseOrder @relation(fields: [po_id], references: [id])
+  status      GRNStatus     @default(draft)
+  received_by String?
+  received_at DateTime?
+  notes       String?
+  created_at  DateTime      @default(now())
+  updated_at  DateTime      @updatedAt
+
+  items         GRNItem[]
+  match_results MatchResult[]
+
+  @@index([po_id])
+  @@index([status])
+  @@map("grns")
+}
+
+model GRNItem {
+  id                String  @id @default(cuid())
+  grn_id            String
+  grn               GRN     @relation(fields: [grn_id], references: [id], onDelete: Cascade)
+  po_item_id        String
+  po_item           POItem  @relation(fields: [po_item_id], references: [id])
+  item_id           String?
+  item              Item?   @relation(fields: [item_id], references: [id])
+  description       String
+  // Quantity actually received — compared against PO qty and invoice qty in match
+  quantity_received Decimal @db.Decimal(10, 3)
+  notes             String?
+  sort_order        Int     @default(0)
+
+  @@index([grn_id])
+  @@index([po_item_id])
+  @@map("grn_items")
+}
+
+// ── Vendor Invoices ───────────────────────────────────────────────────────
+// Fully separate from sales_invoices — no shared table, no discriminator.
+
+model VendorInvoice {
+  id                String              @id @default(cuid())
+  invoice_number    String              @unique
+  po_id             String
+  po                PurchaseOrder       @relation(fields: [po_id], references: [id])
+  vendor_id         String
+  vendor            Vendor              @relation(fields: [vendor_id], references: [id])
+  // Point-in-time copy of vendor
+  vendor_snapshot   Json
+  status            VendorInvoiceStatus @default(draft)
+  // Vendor's own invoice reference number (what they sent us)
+  vendor_ref_number String?
+  issue_date        DateTime
+  due_date          DateTime?
+  is_interstate     Boolean             @default(true)
+  subtotal          Decimal             @db.Decimal(12, 2)
+  discount_percent  Decimal             @default(0) @db.Decimal(5, 2)
+  discount_amount   Decimal             @default(0) @db.Decimal(12, 2)
+  tax_total         Decimal             @db.Decimal(12, 2)
+  total             Decimal             @db.Decimal(12, 2)
+  amount_paid       Decimal             @default(0) @db.Decimal(12, 2)
+  balance_due       Decimal             @db.Decimal(12, 2)
+  payment_status    PaymentStatus       @default(unpaid)
+  notes             String?
+  // Set by finance approval step
+  approved_by       String?
+  approved_at       DateTime?
+  rejection_reason  String?
+  is_deleted        Boolean             @default(false)
+  deleted_at        DateTime?
+  created_at        DateTime            @default(now())
+  updated_at        DateTime            @updatedAt
+
+  items           VendorInvoiceItem[]
+  match_results   MatchResult[]
+  dispute_records DisputeRecord[]
+  vendor_payments VendorPayment[]
+  vendor_ledger   VendorLedger[]
+
+  @@index([po_id])
+  @@index([vendor_id])
+  @@index([status])
+  @@index([is_deleted])
+  @@map("vendor_invoices")
+}
+
+model VendorInvoiceItem {
+  id                String        @id @default(cuid())
+  vendor_invoice_id String
+  vendor_invoice    VendorInvoice @relation(fields: [vendor_invoice_id], references: [id], onDelete: Cascade)
+  // Must trace back to a PO line item — enforces that vendor bills only what was ordered
+  po_item_id        String
+  po_item           POItem        @relation(fields: [po_item_id], references: [id])
+  item_id           String?
+  item              Item?         @relation(fields: [item_id], references: [id])
+  description       String
+  hsn_sac           String?
+  // Quantity the vendor is billing for — this is what gets matched
+  quantity_billed   Decimal       @db.Decimal(10, 3)
+  unit_price        Decimal       @db.Decimal(12, 2)
+  tax_lines         Json          @default("[]")
+  line_total        Decimal       @db.Decimal(12, 2)
+  sort_order        Int           @default(0)
+
+  @@index([vendor_invoice_id])
+  @@index([po_item_id])
+  @@map("vendor_invoice_items")
+}
+
+// ── 3-Way Match ───────────────────────────────────────────────────────────
+// Central feature. Operates at line-item level.
+
+model MatchResult {
+  id                String        @id @default(cuid())
+  vendor_invoice_id String
+  vendor_invoice    VendorInvoice @relation(fields: [vendor_invoice_id], references: [id])
+  grn_id            String
+  grn               GRN           @relation(fields: [grn_id], references: [id])
+  // Overall document-level result
+  status            MatchStatus
+  // Line-item level detail array:
+  // [{ po_item_id, description, po_qty, grn_qty, invoice_qty, matched }]
+  line_item_results Json
+  matched_at        DateTime      @default(now())
+  created_at        DateTime      @default(now())
+
+  @@index([vendor_invoice_id])
+  @@index([grn_id])
+  @@index([status])
+  @@map("match_results")
+}
+
+// ── Dispute Records ───────────────────────────────────────────────────────
+
+model DisputeRecord {
+  id                String        @id @default(cuid())
+  vendor_invoice_id String
+  vendor_invoice    VendorInvoice @relation(fields: [vendor_invoice_id], references: [id])
+  status            DisputeStatus @default(open)
+  responsible_party DisputeParty
+  description       String
+  // Detail of each mismatched line: [{ po_item_id, description, po_qty, grn_qty, invoice_qty }]
+  mismatch_detail   Json
+  resolution_notes  String?
+  resolved_at       DateTime?
+  created_at        DateTime      @default(now())
+  updated_at        DateTime      @updatedAt
+
+  @@index([vendor_invoice_id])
+  @@index([status])
+  @@map("dispute_records")
+}
+
+// ── Vendor Payments ───────────────────────────────────────────────────────
+// Gated: only allowed when vendor_invoice.status = 'approved'
+// and latest match_result.status = 'matched'
+
+model VendorPayment {
+  id                String        @id @default(cuid())
+  payment_ref       String        @unique
+  vendor_invoice_id String
+  vendor_invoice    VendorInvoice @relation(fields: [vendor_invoice_id], references: [id])
+  vendor_id         String
+  vendor            Vendor        @relation(fields: [vendor_id], references: [id])
+  amount            Decimal       @db.Decimal(12, 2)
+  method            PaymentMethod
+  paid_at           DateTime      @default(now())
+  notes             String?
+  created_at        DateTime      @default(now())
+  updated_at        DateTime      @updatedAt
+
+  vendor_ledger VendorLedger[]
+
+  @@index([vendor_invoice_id])
+  @@index([vendor_id])
+  @@map("vendor_payments")
+}
+
+// ── Vendor Ledger ─────────────────────────────────────────────────────────
+
+model VendorLedger {
+  id                String                @id @default(cuid())
+  vendor_id         String
+  vendor            Vendor                @relation(fields: [vendor_id], references: [id])
+  vendor_invoice_id String?
+  vendor_invoice    VendorInvoice?        @relation(fields: [vendor_invoice_id], references: [id])
+  vendor_payment_id String?
+  vendor_payment    VendorPayment?        @relation(fields: [vendor_payment_id], references: [id])
+  entry_type        VendorLedgerEntryType
+  direction         LedgerDirection
+  amount            Decimal               @db.Decimal(12, 2)
+  description       String
+  reference_number  String?
+  entry_date        DateTime
+  created_at        DateTime              @default(now())
+
+  @@index([vendor_id])
+  @@index([entry_date])
+  @@map("vendor_ledger")
+}
