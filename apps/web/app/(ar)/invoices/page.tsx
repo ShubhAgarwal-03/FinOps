@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { invoicesService } from '../../../../../libs/ar/invoices/';
+import { invoiceServices } from '../../../../../libs/ar/invoices/invoice.services';
 import { Invoice, InvoiceStatus } from '@/types';
 import { formatDate } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';

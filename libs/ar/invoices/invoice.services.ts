@@ -230,7 +230,7 @@ export async function updateInvoice(id: string, input: UpdateInvoiceInput) {
       where: { id: input.customer_id, is_deleted: false },
     });
     if (!customer) throw Object.assign(new Error('Customer not found'), { statusCode: 404 });
-    customer_snapshot = snapshotCustomer(customer) as unknown as Prisma.JsonValue;
+    customer_snapshot = snapshotCustomer(customer) as unknown as Prisma.InputJsonValue;
   }
 
   // Recalculate totals only if items provided
