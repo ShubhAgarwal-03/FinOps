@@ -1,3 +1,6 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// libs/ap/rfp/rfp.services.ts
+// ─────────────────────────────────────────────────────────────────────────────
 import { Prisma, RFPStatus, RequisitionStatus } from '@prisma/client';
 import { prisma } from '../../../apps/api/src/config/prisma';
 import { generateDocumentNumber } from '../../shared/utils/sequential-numbering';
@@ -30,6 +33,7 @@ export interface EvaluateRfpInput {
   }[];
 }
 
+// ── List ──────────────────────────────────────────────────────────────────────
 export async function listRfps(query: {
   status?: string; search?: string; page?: string; limit?: string;
 }) {
@@ -50,7 +54,7 @@ export async function listRfps(query: {
     prisma.rFP.findMany({
       where,
       include: {
-        requisition: { select: { req_number: true, title: true } },
+        requisition:   { select: { req_number: true, title: true } },
         vendor_quotes: { include: { vendor: { select: { vendor_name: true } } } },
         _count: { select: { vendor_quotes: true } },
       },
@@ -64,17 +68,13 @@ export async function listRfps(query: {
   return { rfps, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
 }
 
+// ── Get one ───────────────────────────────────────────────────────────────────
 export async function getRfpById(id: string) {
   const rfp = await prisma.rFP.findUnique({
     where: { id },
     include: {
-      requisition: { include: { items: true } },
-      vendor_quotes: {
-        include: {
-          vendor: true,
-          evaluation: true,
-        },
-      },
+      requisition:       { include: { items: true } },
+      vendor_quotes:     { include: { vendor: true, evaluation: true } },
       quote_evaluations: true,
     },
   });
@@ -82,8 +82,10 @@ export async function getRfpById(id: string) {
   return rfp;
 }
 
+// ── Create ────────────────────────────────────────────────────────────────────
+// Requisition must be APPROVED. Creates the RFP and atomically advances
+// requisition status to converted_to_rfp.
 export async function createRfp(input: CreateRfpInput) {
-  // Requisition must be APPROVED
   const requisition = await prisma.requisition.findUnique({
     where: { id: input.requisition_id },
   });
@@ -93,13 +95,13 @@ export async function createRfp(input: CreateRfpInput) {
   if (requisition.status !== RequisitionStatus.approved) {
     throw Object.assign(
       new Error('Requisition must be APPROVED before creating an RFP'),
-      { statusCode: 409 }
+      { statusCode: 409 },
     );
   }
 
   const rfp_number = await generateDocumentNumber(prisma, 'RFP');
 
-  const rfp = await prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx) => {
     const newRfp = await tx.rFP.create({
       data: {
         rfp_number,
@@ -111,27 +113,21 @@ export async function createRfp(input: CreateRfpInput) {
       },
       include: { vendor_quotes: true },
     });
-
-    // Advance requisition status
     await tx.requisition.update({
       where: { id: input.requisition_id },
-      data: { status: RequisitionStatus.converted_to_rfp },
+      data:  { status: RequisitionStatus.converted_to_rfp },
     });
-
     return newRfp;
   });
-
-  return rfp;
 }
 
+// ── Update (OPEN only) ────────────────────────────────────────────────────────
 export async function updateRfp(id: string, input: Partial<CreateRfpInput>) {
   const existing = await prisma.rFP.findUnique({ where: { id } });
   if (!existing) throw Object.assign(new Error('RFP not found'), { statusCode: 404 });
-
   if (existing.status !== RFPStatus.open) {
     throw Object.assign(new Error('Only OPEN RFPs can be edited'), { statusCode: 409 });
   }
-
   return prisma.rFP.update({
     where: { id },
     data: {
@@ -143,6 +139,8 @@ export async function updateRfp(id: string, input: Partial<CreateRfpInput>) {
   });
 }
 
+// ── Submit vendor quote ───────────────────────────────────────────────────────
+// Upserts by (rfp_id, vendor_id) — re-submitting replaces the existing quote.
 export async function submitVendorQuote(rfpId: string, input: SubmitQuoteInput) {
   const rfp = await prisma.rFP.findUnique({ where: { id: rfpId } });
   if (!rfp) throw Object.assign(new Error('RFP not found'), { statusCode: 404 });
@@ -177,27 +175,31 @@ export async function submitVendorQuote(rfpId: string, input: SubmitQuoteInput) 
   });
 }
 
+// ── Evaluate + select vendor ──────────────────────────────────────────────────
+// Records scores for all evaluated quotes, marks the selected quote, and
+// advances RFP status to vendor_selected (not "awarded" — that value does
+// not exist in RFPStatus; the schema uses vendor_selected).
 export async function evaluateRfp(rfpId: string, input: EvaluateRfpInput) {
   const rfp = await prisma.rFP.findUnique({
-    where: { id: rfpId },
+    where:   { id: rfpId },
     include: { vendor_quotes: true },
   });
   if (!rfp) throw Object.assign(new Error('RFP not found'), { statusCode: 404 });
-  if (rfp.status === RFPStatus.awarded) {
-    throw Object.assign(new Error('RFP has already been awarded'), { statusCode: 409 });
+
+  // FIX: was RFPStatus.awarded — does not exist. Schema has vendor_selected.
+  if (rfp.status === RFPStatus.vendor_selected) {
+    throw Object.assign(new Error('Vendor has already been selected for this RFP'), { statusCode: 409 });
   }
 
-  // Validate selected quote belongs to this RFP
   const selectedQuote = rfp.vendor_quotes.find((q) => q.id === input.selected_quote_id);
   if (!selectedQuote) {
     throw Object.assign(
       new Error('Selected quote does not belong to this RFP'),
-      { statusCode: 409 }
+      { statusCode: 409 },
     );
   }
 
   return prisma.$transaction(async (tx) => {
-    // Upsert all evaluations
     for (const ev of input.evaluations) {
       await tx.quoteEvaluation.upsert({
         where: { vendor_quote_id: ev.vendor_quote_id },
@@ -224,12 +226,12 @@ export async function evaluateRfp(rfpId: string, input: EvaluateRfpInput) {
       });
     }
 
-    // Lock RFP as awarded
+    // FIX: was RFPStatus.awarded — corrected to vendor_selected
     return tx.rFP.update({
       where: { id: rfpId },
-      data: { status: RFPStatus.awarded },
+      data:  { status: RFPStatus.vendor_selected },
       include: {
-        vendor_quotes: { include: { vendor: true, evaluation: true } },
+        vendor_quotes:     { include: { vendor: true, evaluation: true } },
         quote_evaluations: true,
       },
     });

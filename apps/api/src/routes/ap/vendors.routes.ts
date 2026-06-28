@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import * as vendorService from '../../../../libs/ap/vendors/vendors.services';
+import * as vendorService from '../../../../../libs/ap/vendors/vendors.services';
 
 const router = Router();
 const wrap = (fn: Function) => (req: Request, res: Response, next: NextFunction) =>

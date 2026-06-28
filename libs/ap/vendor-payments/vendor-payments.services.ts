@@ -1,7 +1,7 @@
 import { Prisma, PaymentMethod, VendorInvoiceStatus } from '@prisma/client';
 import { prisma } from '../../../apps/api/src/config/prisma';
 import { generateDocumentNumber } from '../../shared/utils/sequential-numbering';
-import { syncVendorInvoicePaymentFields } from '../vendor-invoices/vendor-invoice.service';
+import { syncVendorInvoicePaymentFields } from '../vendor-invoices/vendor-invoices.services';
 
 export interface CreateVendorPaymentInput {
   vendor_invoice_id: string;

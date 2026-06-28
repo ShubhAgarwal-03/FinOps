@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import * as customerService from '../../../../libs/ar/customers/customers.services';
-import { getCustomerLedger } from '../../../../libs/ar/customers/customers-ledger.services';
+import * as customerService from '../../../../../libs/ar/customers/customers.services';
+import { getCustomerLedger } from '../../../../../libs/ar/customers/customers-ledger.service';
 
 const router = Router();
 const wrap = (fn: Function) => (req: Request, res: Response, next: NextFunction) =>

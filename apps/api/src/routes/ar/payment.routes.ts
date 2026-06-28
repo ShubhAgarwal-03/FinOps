@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import * as paymentService from '../../../../libs/ar/payments/payments.services';
+import * as paymentService from '../../../../../libs/ar/payments/payments.service';
 
 const router = Router();
 const wrap = (fn: Function) => (req: Request, res: Response, next: NextFunction) =>

@@ -1,8 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { SalesInvoiceStatus } from '@prisma/client';
-import * as invoiceService from '../../../../libs/ar/invoices/invoice.services';
+import * as invoiceService from '../../../../../libs/ar/invoices/invoice.services';
 import { prisma } from '../../config/prisma';
-import { generateInvoicePdf } from '../../../../libs/ar/invoices/invoice-pdf.services';
+import { generateInvoicePdf } from '../../../../../libs/ar/invoices/invoice-pdf.services';
 
 const router = Router();
 const wrap = (fn: Function) => (req: Request, res: Response, next: NextFunction) =>

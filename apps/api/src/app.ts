@@ -6,7 +6,7 @@ import morgan from 'morgan';
 // AR routes
 import customerRoutes from './routes/ar/customers.routes';
 import invoiceRoutes from './routes/ar/invoices.routes';
-import paymentRoutes from './routes/ar/payments.routes';
+import paymentRoutes from './routes/ar/payment.routes';
 
 // AP routes (stubs — filled in later phases)
 import vendorRoutes from './routes/ap/vendors.routes';

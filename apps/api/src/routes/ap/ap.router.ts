@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import vendorRoutes         from './vendors/vendors.routes';
-import requisitionRoutes    from './requisitions/requisitions.routes';
-import rfpRoutes            from './rfp/rfp.routes';
-import poRoutes             from './purchase-orders/po.routes';
-import grnRoutes            from './grn/grn.routes';
-import vendorInvoiceRoutes  from './vendor-invoices/vendor-invoices.routes';
-import disputeRoutes        from './disputes/disputes.routes';
-import vendorPaymentRoutes  from './vendor-payments/vendor-payments.routes';
+import vendorRoutes         from './vendors.routes';
+import requisitionRoutes    from './requisitions.routes';
+import rfpRoutes            from './rfp.routes';
+import poRoutes             from './purchase-orders.routes';
+import grnRoutes            from './grn.routes';
+import vendorInvoiceRoutes  from './vendor-invoices.routes';
+import disputeRoutes        from './disputes.routes';
+import vendorPaymentRoutes  from './vendor-payments.routes';
 
 const router = Router();
 
