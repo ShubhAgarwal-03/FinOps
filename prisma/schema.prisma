@@ -706,10 +706,12 @@ model DisputeRecord {
   vendor_invoice    VendorInvoice @relation(fields: [vendor_invoice_id], references: [id])
   status            DisputeStatus @default(open)
   responsible_party DisputeParty
-  description       String
+  reason            String
   // Detail of each mismatched line: [{ po_item_id, description, po_qty, grn_qty, invoice_qty }]
-  mismatch_detail   Json
-  resolution_notes  String?
+  raisedBy          String?
+  resolution        String?
+  resolution_action String?
+  resolved_by       String?
   resolved_at       DateTime?
   created_at        DateTime      @default(now())
   updated_at        DateTime      @updatedAt

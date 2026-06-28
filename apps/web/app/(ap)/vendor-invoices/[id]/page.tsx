@@ -3,16 +3,15 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
-  Loader2, Play, CheckCircle2, XCircle, Clock,
-  AlertTriangle, CreditCard
+  Loader2, Play, CheckCircle2, XCircle, Clock, CreditCard
 } from 'lucide-react';
 import {
-  vendorInvoicesService, matchService, disputesService, vendorPaymentsService
+  vendorInvoicesService, vendorPaymentsService
 } from '@/services/ap';
 import type { VendorInvoice, MatchResult, DisputeRecord, VendorPayment } from '@/types/ap';
-import MatchResultCard from '../../../../../web/components/ap/matchResultCard';
-import DisputePanel from '../../../../../web/components/ap/disputePanel';
-import VendorPaymentGate from '../../../../../web/components/ap/vendorPaymentGate';
+import MatchResultCard from '../../../../components/ap/matchResultCard';
+import DisputePanel from '../../../../components/ap/disputePanel';
+import VendorPaymentGate from '../../../../components/ap/vendorPaymentGate';
 import { formatDate } from '../../../../../../libs/shared/utils/date.utils';
 import { formatCurrency } from '../../../../../../libs/shared/utils/currency.utils';
 
@@ -89,11 +88,14 @@ export default function VendorInvoiceDetailPage() {
   async function handleRunMatch() {
     setMatching(true);
     try {
-      const result = await vendorInvoicesService.runMatch(id);
-      setMatchResult(result.match_result ?? result);
+      await vendorInvoicesService.runMatch(id);
       const updated = await vendorInvoicesService.getOne(id);
       setInvoice(updated);
-      toast.success(`Match result: ${result.match_result?.status ?? result.status ?? 'done'}`);
+      if (updated.match_results?.length) {
+        setMatchResult(updated.match_results[updated.match_results.length - 1]);
+      }
+      const status = updated.status;
+      toast.success(`Match result: ${status === 'matched' ? 'MATCHED ✓' : 'MISMATCH — dispute required'}`);
     } catch { toast.error('Failed to run match'); }
     finally { setMatching(false); }
   }
@@ -126,14 +128,16 @@ export default function VendorInvoiceDetailPage() {
     if (amount > invoice.balance_due + 0.01) { toast.error(`Amount exceeds balance due (${fmt(invoice.balance_due)})`); return; }
     setPaying(true);
     try {
-      const { payment, invoice: updated } = await vendorPaymentsService.create({
+      const payment = await vendorPaymentsService.create({
         vendor_invoice_id: id,
         amount,
         method: payForm.method as VendorPayment['method'],
         paid_at: payForm.paid_at || undefined,
         notes: payForm.notes || undefined,
-      }) as { payment: VendorPayment; invoice: VendorInvoice };
+      });
       setPayments(prev => [payment, ...prev]);
+      // Re-fetch invoice to get updated amount_paid / balance_due / payment_status
+      const updated = await vendorInvoicesService.getOne(id);
       setInvoice(updated);
       setPayForm({ amount: '', method: 'bank_transfer', paid_at: new Date().toISOString().split('T')[0], notes: '' });
       setShowPayForm(false);

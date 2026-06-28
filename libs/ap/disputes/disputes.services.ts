@@ -78,7 +78,7 @@ export async function createDispute(input: CreateDisputeInput) {
   return prisma.disputeRecord.create({
     data: {
       vendor_invoice_id: input.vendor_invoice_id,
-      raised_by:         input.raised_by ?? 'User',
+      raisedBy:         input.raised_by ?? 'User',
       reason:            input.reason,
       responsible_party: input.responsible_party,
       // FIX: DisputeStatus.open (enum value), not the string 'open'

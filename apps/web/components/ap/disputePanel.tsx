@@ -4,7 +4,7 @@ import { Loader2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { disputesService, type ResolveDisputePayload } from '@/services/ap';
 import type { DisputeRecord, DisputeParty } from '@/types/ap';
-import StatusBadge from '@/components/shared/StatusBadge';
+import StatusBadge from '../../components/shared/statusBadge';
 import { formatDate } from '../../../../libs/shared/utils/date.utils';
 
 const PARTY_LABELS: Record<DisputeParty, string> = {

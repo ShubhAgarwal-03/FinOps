@@ -6,7 +6,7 @@ import { requisitionsService } from '@/services/ap';
 import type { Requisition } from '@/types/ap';
 import { Loader2, ClipboardList, Plus, Search, X, MoreVertical, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatDate } from '../../../../../libs/shared/utils/date.utils';
-import ConfirmDialog from '../../../../web/components/shared/confirmDialog';
+import ConfirmDialog from '../../../components/shared/confirmDialog';
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-600',

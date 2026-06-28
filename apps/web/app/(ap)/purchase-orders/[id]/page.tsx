@@ -7,7 +7,7 @@ import { purchaseOrdersService } from '@/services/ap';
 import type { PurchaseOrder } from '@/types/ap';
 import ConfirmDialog from '../../../../components/shared/confirmDialog';
 import { formatDate } from '../../../../../../libs/shared/utils/date.utils';
-import { formatCurrency } from '../../../../../../libs/shared/utils/currency.utils';
+import { formatCurrency } from './../../../../../../libs/shared/utils/currency.utils';
 
 const STATUS_BADGE: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-600',

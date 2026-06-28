@@ -14,9 +14,9 @@ const PARTY_LABEL: Record<DisputeParty, string> = {
 };
 
 const RESOLUTION_OPTIONS = [
-  { value: 'resolved_accept',   label: 'Accept vendor\'s quantity — approve payment as-is' },
-  { value: 'resolved_reject',   label: 'Reject invoice — vendor to resubmit corrected invoice' },
-  { value: 'resolved_amend_po', label: 'Raise PO amendment — correct the PO quantity' },
+  { value: 'accept_invoice', label: 'Accept vendor\'s quantity — approve payment as-is' },
+  { value: 'reject_invoice', label: 'Reject invoice — vendor to resubmit corrected invoice' },
+  { value: 'amend_po',       label: 'Raise PO amendment — correct the PO quantity' },
 ];
 
 const inputClass = 'border border-slate-200 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white w-full';
@@ -31,12 +31,12 @@ export default function DisputePage() {
 
   // Create form
   const [party, setParty] = useState<DisputeParty>('vendor');
-  const [description, setDescription] = useState('');
+  const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   // Resolve form
+  const [resolutionAction, setResolutionAction] = useState('');
   const [resolution, setResolution] = useState('');
-  const [resolutionNotes, setResolutionNotes] = useState('');
   const [resolving, setResolving] = useState(false);
 
   useEffect(() => {
@@ -62,17 +62,14 @@ export default function DisputePage() {
   }, [id]);
 
   async function handleCreate() {
-    if (!description.trim()) { toast.error('Please describe the dispute.'); return; }
+    if (!reason.trim()) { toast.error('Please describe the dispute.'); return; }
     if (!matchResult) { toast.error('No match result found.'); return; }
-
-    const mismatches = matchResult.item_results.filter(r => !r.is_matched);
     setSubmitting(true);
     try {
       const dispute = await disputesService.create({
         vendor_invoice_id: id,
-        responsible_party: party,
-        description,
-        mismatch_detail: mismatches as any,
+        responsible_party: party as 'vendor' | 'internal' | 'purchase_order',
+        reason,
       });
       setExisting(dispute);
       toast.success('Dispute raised.');
@@ -85,20 +82,20 @@ export default function DisputePage() {
 
   async function handleResolve() {
     if (!existing) return;
-    if (!resolution) { toast.error('Select a resolution path.'); return; }
-    if (!resolutionNotes.trim()) { toast.error('Add resolution notes.'); return; }
+    if (!resolutionAction) { toast.error('Select a resolution path.'); return; }
+    if (!resolution.trim()) { toast.error('Add resolution notes.'); return; }
     setResolving(true);
     try {
       const updated = await disputesService.resolve(existing.id, {
-        status: resolution as DisputeRecord['status'],
-        resolution_notes: resolutionNotes,
+        resolution_action: resolutionAction as 'accept_invoice' | 'amend_po' | 'reject_invoice',
+        resolution,
       });
       setExisting(updated);
       toast.success('Dispute resolved.');
-      // Redirect based on resolution
-      if (resolution === 'resolved_reject') {
+      // Redirect based on resolution_action
+      if (resolutionAction === 'reject_invoice') {
         router.push(`/vendor-invoices/${id}`);
-      } else if (resolution === 'resolved_amend_po' && invoice?.po_id) {
+      } else if (resolutionAction === 'amend_po' && invoice?.po_id) {
         router.push(`/purchase-orders/${invoice.po_id}/amend`);
       } else {
         router.push(`/vendor-invoices/${id}/match`);
@@ -171,8 +168,8 @@ export default function DisputePage() {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
               <textarea
-                value={description}
-                onChange={e => setDescription(e.target.value)}
+                value={reason}
+                onChange={e => setReason(e.target.value)}
                 placeholder="Describe the issue in detail..."
                 rows={3}
                 className={inputClass}
@@ -205,12 +202,12 @@ export default function DisputePage() {
             </div>
             <div>
               <span className="text-slate-500">Description: </span>
-              <span className="text-slate-700">{existing.description}</span>
+              <span className="text-slate-700">{existing.reason}</span>
             </div>
-            {existing.resolution_notes && (
+             {existing.resolution && (
               <div>
                 <span className="text-slate-500">Resolution: </span>
-                <span className="text-slate-700">{existing.resolution_notes}</span>
+                <span className="text-slate-700">{existing.resolution}</span>
               </div>
             )}
           </div>
@@ -225,7 +222,7 @@ export default function DisputePage() {
                   {RESOLUTION_OPTIONS.map(opt => (
                     <label key={opt.value} className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
                       <input type="radio" name="resolution" value={opt.value} checked={resolution === opt.value}
-                        onChange={() => setResolution(opt.value)} className="mt-0.5" />
+                        onChange={() => setResolutionAction(opt.value)} className="mt-0.5" />
                       <span className="text-sm text-slate-700">{opt.label}</span>
                     </label>
                   ))}
@@ -234,7 +231,7 @@ export default function DisputePage() {
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Resolution Notes</label>
-                <textarea value={resolutionNotes} onChange={e => setResolutionNotes(e.target.value)}
+                <textarea value={resolution} onChange={e => setResolution(e.target.value)}
                   placeholder="Document the resolution decision..."
                   rows={3} className={inputClass} />
               </div>

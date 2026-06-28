@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { Loader2, CheckCircle2, XCircle, ArrowRight } from 'lucide-react';
 import { requisitionsService, rfpService } from '@/services/ap';
 import type { Requisition } from '@/types/ap';
-import WorkflowStepper, { type WorkflowStep } from '../../../../../web/components/shared/workflowStepper';
+import WorkflowStepper, { type WorkflowStep } from '../../../../components/shared/workflowStepper';
 import { formatDate } from '../../../../../../libs/shared/utils/date.utils';
 import { formatCurrency } from '../../../../../../libs/shared/utils/currency.utils';
 

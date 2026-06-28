@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { vendorInvoicesService, disputesService } from '@/services/ap';
 import type { VendorInvoice, DisputeRecord } from '@/types/ap';
-import DisputePanel from '../../../../../../web/components/ap/disputePanel';
+import DisputePanel from '../../../../../components/ap/disputePanel';
 
 const STATUS_BADGE: Record<string, string> = {
   open: 'bg-orange-100 text-orange-700',
