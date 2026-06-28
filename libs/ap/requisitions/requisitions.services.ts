@@ -24,7 +24,7 @@ export interface UpdateRequisitionInput extends Partial<CreateRequisitionInput> 
 
 // Valid status transitions
 const TRANSITIONS: Record<string, RequisitionStatus[]> = {
-  draft:             ['submitted'],
+  draft:             ['pending_approval'],
   submitted:         ['approved', 'rejected'],
   approved:          ['converted_to_rfp'],
   rejected:          [],

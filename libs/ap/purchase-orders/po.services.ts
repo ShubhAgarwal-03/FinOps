@@ -181,7 +181,7 @@ export async function createPurchaseOrder(input: CreatePOInput) {
     data: {
       po_number,
       vendor_id: input.vendor_id,
-      vendor_snapshot,
+      vendor_snapshot: vendor_snapshot as unknown as Prisma.InputJsonValue,
       rfp_id: input.rfp_id ?? null,
       status: POStatus.draft,
       is_interstate,

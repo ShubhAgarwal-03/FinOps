@@ -162,7 +162,7 @@ export async function createVendorInvoice(input: CreateVendorInvoiceInput) {
     data: {
       invoice_number,
       vendor_id:         po.vendor_id,
-      vendor_snapshot,
+      vendor_snapshot:   vendor_snapshot as unknown as Prisma.InputJsonValue,
       po_id:             input.po_id,
       vendor_ref_number: input.vendor_ref_number,
       issue_date:        input.issue_date ?? new Date(),
@@ -286,7 +286,7 @@ export async function approveVendorInvoice(id: string, approved_by?: string) {
 export async function cancelVendorInvoice(id: string) {
   const invoice = await prisma.vendorInvoice.findUnique({ where: { id } });
   if (!invoice) throw Object.assign(new Error('Vendor invoice not found'), { statusCode: 404 });
-  if ([VendorInvoiceStatus.paid, VendorInvoiceStatus.void].includes(invoice.status)) {
+  if (([VendorInvoiceStatus.paid, VendorInvoiceStatus.void] as VendorInvoiceStatus[]).includes(invoice.status)) {
     throw Object.assign(new Error(`Cannot void a ${invoice.status} vendor invoice`), { statusCode: 409 });
   }
   return prisma.vendorInvoice.update({ where: { id }, data: { status: VendorInvoiceStatus.void } });

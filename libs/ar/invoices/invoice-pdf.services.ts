@@ -181,7 +181,7 @@ export async function generateInvoicePdf(
       if (i % 2 === 1) doc.rect(40, rowY, PAGE_WIDTH, rowH).fill('#f8fafc');
 
       // Aggregate tax % for display from tax_lines JSON
-      const taxLines = (item.tax_lines as TaxLine[]) ?? [];
+      const taxLines = (item.tax_lines as unknown as TaxLine[]) ?? [];
       const totalTaxPct = taxLines.reduce((s, t) => s + t.percent, 0);
 
       doc.fontSize(8).font('Helvetica').fillColor('#334155');

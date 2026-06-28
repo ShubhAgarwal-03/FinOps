@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { vendorsService } from '@/services/ap';
 import type { Vendor } from '@/types/ap';
-import VendorForm from '@/components/ap/VendorForm';
+import VendorForm from '../../../../../components/ap/vendorForm';
 
 export default function EditVendorPage() {
   const { id } = useParams<{ id: string }>();

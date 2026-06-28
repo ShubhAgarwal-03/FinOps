@@ -45,9 +45,8 @@ export async function getDisputeById(id: string) {
     include: {
       vendor_invoice: {
         include: {
-          match_result: true,
+          match_results: true,
           po:  { select: { po_number: true } },
-          grn: { select: { grn_number: true } },
         },
       },
     },

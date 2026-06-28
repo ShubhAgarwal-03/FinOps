@@ -52,15 +52,14 @@ export async function listVendorPayments(query: {
 export async function createVendorPayment(input: CreateVendorPaymentInput) {
   const invoice = await prisma.vendorInvoice.findUnique({
     where: { id: input.vendor_invoice_id },
-    include: { match_result: true },
+    include: { match_results: { take: 1, orderBy: { matched_at: 'desc' } } },
   });
   if (!invoice) {
     throw Object.assign(new Error('Vendor invoice not found'), { statusCode: 404 });
   }
 
   // ── GATE 1: must be finance-approved ─────────────────────
-  if (invoice.status !== VendorInvoiceStatus.approved &&
-      invoice.status !== VendorInvoiceStatus.partial) {
+  if (invoice.status !== VendorInvoiceStatus.approved ) {
     throw Object.assign(
       new Error(
         `Payment blocked: invoice status is "${invoice.status}". ` +
@@ -71,7 +70,8 @@ export async function createVendorPayment(input: CreateVendorPaymentInput) {
   }
 
   // ── GATE 2: match must exist and be MATCHED ───────────────
-  if (!invoice.match_result || !invoice.match_result.overall_matched) {
+  const latestMatch = (invoice.match_results as any[])?.[0];
+  if (!latestMatch || latestMatch.status !== 'matched') {
     throw Object.assign(
       new Error(
         'Payment blocked: 3-way match has not passed. ' +

@@ -1,8 +1,9 @@
 import { Prisma, SalesInvoiceStatus, PaymentStatus } from '@prisma/client';
 import { prisma } from '../../../apps/api/src/config/prisma';
-import { calculateTotals } from '../../shared/engines/totals/totals-calculator';
+import { calculateTotalsForService as calculateTotals } from '../../shared/engines/totals/totals-calculator';
 import { generateDocumentNumber } from '../../shared/utils/sequential-numbering';
 import { snapshotCustomer } from '../../shared/utils/snapshot.utils';
+ import { calculateTotalsForService } from '../../shared/engines/totals/totals-calculator';
 
 // ── Types ─────────────────────────────────────────────────
 
@@ -139,7 +140,7 @@ export async function createInvoice(input: CreateInvoiceInput) {
 
   // 3. Calculate totals using shared engine
   const { processedItems, subtotal, discount_amount, tax_total, total } =
-    calculateTotals(input.items, input.discount_percent ?? 0);
+    calculateTotalsForService(input.items, input.discount_percent ?? 0);
 
   // 4. Sequential invoice number
   const invoice_number = await generateDocumentNumber(prisma, 'INV');
@@ -151,7 +152,7 @@ export async function createInvoice(input: CreateInvoiceInput) {
         invoice_number,
         po_so_number:         input.po_so_number,
         customer_id:          input.customer_id,
-        customer_snapshot,
+        customer_snapshot: customer_snapshot as unknown as Prisma.InputJsonValue,
         issue_date:           input.issue_date ?? new Date(),
         due_date:             input.due_date ?? null,
         is_interstate:        input.is_interstate ?? true,
@@ -229,7 +230,7 @@ export async function updateInvoice(id: string, input: UpdateInvoiceInput) {
       where: { id: input.customer_id, is_deleted: false },
     });
     if (!customer) throw Object.assign(new Error('Customer not found'), { statusCode: 404 });
-    customer_snapshot = buildCustomerSnapshot(customer);
+    customer_snapshot = snapshotCustomer(customer) as unknown as Prisma.JsonValue;
   }
 
   // Recalculate totals only if items provided
@@ -242,44 +243,29 @@ export async function updateInvoice(id: string, input: UpdateInvoiceInput) {
     balance_due: Prisma.Decimal;
     payment_status: PaymentStatus;
   }> = {};
-
+//////
   if (input.items) {
-    const totals = calculateTotals({
-  items: input.items.map((item) => ({
-    quantity:   item.quantity,
-    unit_price: item.unit_price,
-    tax_lines:  item.tax_lines.map((t) => ({
-      name:       t.name,
-      percent:    t.percent,
-      tax_amount: round2((item.quantity * item.unit_price) * (t.percent / 100)),
-    })),
-  })),
-  discount_percent: input.discount_percent ?? 0,
-});
-// then use:
-// totals.subtotal, totals.discount_amount, totals.tax_total, totals.grand_total
-// totals.line_totals[idx].line_total for each item's line_total
-
+    const { subtotal, discount_amount, tax_total, total } =
+      calculateTotals(input.items, input.discount_percent ?? 0);
     const amount_paid = existing.payments.reduce(
       (sum, p) => sum + Number(p.amount), 0
     );
     const balance_due = parseFloat((total - amount_paid).toFixed(2));
     const payment_status: PaymentStatus =
-      amount_paid <= 0     ? PaymentStatus.unpaid
-      : balance_due <= 0   ? PaymentStatus.paid
-      :                      PaymentStatus.partial;
-
+      amount_paid <= 0   ? PaymentStatus.unpaid
+      : balance_due <= 0 ? PaymentStatus.paid
+      :                    PaymentStatus.partial;
     totalsUpdate = {
-      subtotal:       new Prisma.Decimal(subtotal),
+      subtotal:        new Prisma.Decimal(subtotal),
       discount_amount: new Prisma.Decimal(discount_amount),
-      tax_total:      new Prisma.Decimal(tax_total),
-      total:          new Prisma.Decimal(total),
-      amount_paid:    new Prisma.Decimal(amount_paid),
-      balance_due:    new Prisma.Decimal(balance_due),
+      tax_total:       new Prisma.Decimal(tax_total),
+      total:           new Prisma.Decimal(total),
+      amount_paid:     new Prisma.Decimal(amount_paid),
+      balance_due:     new Prisma.Decimal(balance_due),
       payment_status,
     };
   }
-
+////////
   const invoice = await prisma.$transaction(async (tx) => {
     // Replace line items if provided
     if (input.items) {
@@ -304,7 +290,7 @@ export async function updateInvoice(id: string, input: UpdateInvoiceInput) {
       where: { id },
       data: {
         customer_id:          input.customer_id ?? existing.customer_id,
-        customer_snapshot,
+        customer_snapshot: customer_snapshot as unknown as Prisma.InputJsonValue,
         po_so_number:         input.po_so_number,
         due_date:             input.due_date ?? null,
         is_interstate:        input.is_interstate ?? existing.is_interstate,
