@@ -224,7 +224,7 @@ export async function updateInvoice(id: string, input: UpdateInvoiceInput) {
   }
 
   // Re-snapshot customer if customer_id provided
-  let customer_snapshot = existing.customer_snapshot;
+  let customer_snapshot: Prisma.InputJsonValue = existing.customer_snapshot as Prisma.InputJsonValue;
   if (input.customer_id) {
     const customer = await prisma.customer.findFirst({
       where: { id: input.customer_id, is_deleted: false },
@@ -321,37 +321,37 @@ export async function duplicateInvoice(id: string) {
 const invoice_number = await generateDocumentNumber(prisma, 'INV');
 
   return prisma.salesInvoice.create({
-    data: {
-      invoice_number,
-      customer_id:       source.customer_id,
-      customer_snapshot: source.customer_snapshot,
-      status:            SalesInvoiceStatus.draft,
-      issue_date:        new Date(),
-      is_interstate:     source.is_interstate,
-      subtotal:          source.subtotal,
-      discount_percent:  source.discount_percent,
-      discount_amount:   source.discount_amount,
-      tax_total:         source.tax_total,
-      total:             source.total,
-      amount_paid:       new Prisma.Decimal(0),
-      balance_due:       source.total,
-      payment_status:    PaymentStatus.unpaid,
-      notes:             source.notes,
-      items: {
-        create: source.items.map((item) => ({
-          item_id:     item.item_id,
-          description: item.description,
-          hsn_sac:     item.hsn_sac,
-          quantity:    item.quantity,
-          unit_price:  item.unit_price,
-          tax_lines:   item.tax_lines,
-          line_total:  item.line_total,
-          sort_order:  item.sort_order,
-        })),
-      },
+  data: {
+    invoice_number,
+    customer_id:       source.customer_id,
+    customer_snapshot: source.customer_snapshot as unknown as Prisma.InputJsonValue, // ← fix
+    status:            SalesInvoiceStatus.draft,
+    issue_date:        new Date(),
+    is_interstate:     source.is_interstate,
+    subtotal:          source.subtotal,
+    discount_percent:  source.discount_percent,
+    discount_amount:   source.discount_amount,
+    tax_total:         source.tax_total,
+    total:             source.total,
+    amount_paid:       new Prisma.Decimal(0),
+    balance_due:       source.total,
+    payment_status:    PaymentStatus.unpaid,
+    notes:             source.notes,
+    items: {
+      create: source.items.map((item) => ({
+        item_id:     item.item_id,
+        description: item.description,
+        hsn_sac:     item.hsn_sac,
+        quantity:    item.quantity,
+        unit_price:  item.unit_price,
+        tax_lines:   item.tax_lines as Prisma.InputJsonValue, // ← fix
+        line_total:  item.line_total,
+        sort_order:  item.sort_order,
+      })),
     },
-    include: { items: true },
-  });
+  },
+  include: { items: true },
+});
 }
 
 export async function softDeleteInvoice(id: string) {
