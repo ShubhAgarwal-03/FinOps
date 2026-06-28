@@ -2,7 +2,7 @@
   "name": "@invoice-generator/source",
   "version": "0.0.0",
   "license": "MIT",
-  "scripts": {},
+  "scripts": {"vercel-build": "npx nx build web"},
   "private": true,
   "devDependencies": {
     "@eslint/js": "^9.8.0",
