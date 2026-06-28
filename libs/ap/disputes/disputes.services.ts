@@ -102,11 +102,11 @@ export async function resolveDispute(id: string, input: ResolveDisputeInput) {
   if (!dispute) throw Object.assign(new Error('Dispute not found'), { statusCode: 404 });
 
   // FIX: checking 'resolved' (doesn't exist). Any resolved_* value means done.
-  const alreadyResolved = [
-    DisputeStatus.resolved_accept,
-    DisputeStatus.resolved_reject,
-    DisputeStatus.resolved_amend_po,
-  ].includes(dispute.status);
+  const alreadyResolved = (
+    [DisputeStatus.resolved_accept,
+       DisputeStatus.resolved_reject,
+       DisputeStatus.resolved_amend_po] as DisputeStatus[]
+  ).includes(dispute.status);
   if (alreadyResolved) {
     throw Object.assign(new Error('Dispute is already resolved'), { statusCode: 409 });
   }
