@@ -29,6 +29,15 @@ export interface POItemInput {
   sort_order?: number;
 }
 
+interface TotalsResult {
+  subtotal: number;
+  discount_percent: number;
+  discount_amount: number;
+  tax_total: number;
+  grand_total: number;
+  line_totals: { line_total: number }[];
+}
+
 export interface CreatePOInput {
   vendor_id: string;
   rfp_id?: string;
@@ -170,7 +179,7 @@ export async function createPurchaseOrder(input: CreatePOInput) {
   const vendor_snapshot = snapshotVendor(vendor);
 
   const { lineItemInputs, pricedTaxLines } = priceItems(input.items, is_interstate);
-  const totals = calculateTotals({
+  const totals: TotalsResult = calculateTotals({
     items: lineItemInputs,
     discount_percent: input.discount_percent ?? 0,
   });
@@ -218,15 +227,13 @@ export async function createPurchaseOrder(input: CreatePOInput) {
 // The poImmutabilityGuard middleware also blocks this route before it's
 // even called, but the check is repeated here as defense in depth.
 
-export async function updatePurchaseOrder(
-  id: string,
-  input: Partial<CreatePOInput>,
-) {
+export async function updatePurchaseOrder(id: string,  input: Partial<CreatePOInput>,) {
   const existing = await prisma.purchaseOrder.findUnique({
     where: { id },
     include: { items: true },
   });
-  if (!existing) throw Object.assign(new Error('Purchase order not found'), { statusCode: 404 });
+  if (!existing)
+    throw Object.assign(new Error('Purchase order not found'), { statusCode: 404 });
 
   if (existing.status !== POStatus.draft) {
     throw Object.assign(
@@ -238,7 +245,7 @@ export async function updatePurchaseOrder(
   const is_interstate = input.is_interstate ?? existing.is_interstate;
 
   return prisma.$transaction(async (tx) => {
-    let totals;
+    let totals: TotalsResult | undefined; 
     let pricedTaxLinesById: TaxLine[][] = [];
 
     if (input.items) {
@@ -259,7 +266,7 @@ export async function updatePurchaseOrder(
           quantity: new Prisma.Decimal(item.quantity),
           unit_price: new Prisma.Decimal(item.unit_price),
           tax_lines: pricedTaxLinesById[idx] as unknown as Prisma.InputJsonValue,
-          line_total: new Prisma.Decimal(totals.line_totals[idx].line_total),
+          line_total: new Prisma.Decimal(totals!.line_totals[idx].line_total),
           sort_order: item.sort_order ?? idx,
         })),
       });

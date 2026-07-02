@@ -2,7 +2,9 @@
   "name": "@invoice-generator/source",
   "version": "0.0.0",
   "license": "MIT",
-  "scripts": {"vercel-build": "cd apps/web && next build"},
+  "scripts": {
+    "vercel-build": "cd apps/web && next build"
+  },
   "private": true,
   "devDependencies": {
     "@eslint/js": "^9.8.0",
@@ -83,7 +85,7 @@
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.73.1",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.5.0",
+    "tailwind-merge": "^3.6.0",
     "zod": "^4.3.6"
   }
 }

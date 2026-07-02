@@ -1,4 +1,6 @@
-import { Vendor, VendorStatus } from '@prisma/client';
+
+import { Vendor } from '@prisma/client';
+export type VendorStatus = Vendor['status'];
 
 export type { Vendor };
 
@@ -22,7 +24,7 @@ export interface CreateVendorDto {
 }
 
 export interface UpdateVendorDto extends Partial<CreateVendorDto> {
-  status?: VendorStatus;
+  is_deleted?: boolean;
 }
 
 export interface VendorListQuery {

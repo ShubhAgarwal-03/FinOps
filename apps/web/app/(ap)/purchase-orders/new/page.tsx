@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { purchaseOrdersService, rfpService } from '@/services/ap';
-import VendorPicker from '@/components/ap/VendorPicker';
+import VendorPicker from '../../../../components/ap/vendorPicker';
 import type { Vendor, RFP } from '@/types/ap';
 
 const emptyItem = () => ({ description: '', hsn_sac: '', quantity: '1', unit_price: '', sort_order: 0 });
