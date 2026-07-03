@@ -14,7 +14,7 @@ import type {
   Vendor, Requisition, RFP, VendorQuote, QuoteEvaluation,
   PurchaseOrder, POItem, POAmendment, GRN, GRNItem, VendorInvoice,
   MatchResultPayload, DisputeRecord, VendorPayment, RequisitionItem, 
-  VendorLedgerResponse, PaginatedResponse,
+  VendorLedgerResponse, PaginatedResponse,  VendorInvoiceItems,
   
 } from '@/types/ap';
 
@@ -199,8 +199,8 @@ export const vendorInvoicesService = {
     apiClient.get<PaginatedResponse<VendorInvoice>>(`/api/ap/vendor-invoices?${buildParams(filters)}`).then(r => r.data),
   getOne: (id: string) =>
     apiClient.get<VendorInvoice>(`/api/ap/vendor-invoices/${id}`).then(r => r.data),
-  create: (data: Partial<VendorInvoice>) =>
-    apiClient.post<VendorInvoice>('/api/ap/vendor-invoices', data).then(r => r.data),
+  create: (data: Partial<Omit<VendorInvoice, 'items'>> & { items: Partial<VendorInvoiceItem>[] }) =>
+    apiClient.post('/api/ap/vendor-invoices', data).then(r => r.data),
   update: (id: string, data: Partial<VendorInvoice>) =>
     apiClient.put<VendorInvoice>(`/api/ap/vendor-invoices/${id}`, data).then(r => r.data),
   // was PATCH — backend route is POST /:id/submit
