@@ -14,7 +14,7 @@ import type {
   Vendor, Requisition, RFP, VendorQuote, QuoteEvaluation,
   PurchaseOrder, POItem, POAmendment, GRN, GRNItem, VendorInvoice,
   MatchResultPayload, DisputeRecord, VendorPayment, RequisitionItem, 
-  VendorLedgerResponse, PaginatedResponse,  VendorInvoiceItems,
+  VendorLedgerResponse, PaginatedResponse,  VendorInvoiceItem,
   
 } from '@/types/ap';
 
