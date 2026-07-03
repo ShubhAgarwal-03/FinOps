@@ -12,7 +12,7 @@ import apiClient from '@/services/apiClient';
 import { buildParams } from '@/lib/api/query-params';
 import type {
   Vendor, Requisition, RFP, VendorQuote, QuoteEvaluation,
-  PurchaseOrder, POAmendment, GRN, GRNItem, VendorInvoice,
+  PurchaseOrder, POItem, POAmendment, GRN, GRNItem, VendorInvoice,
   MatchResultPayload, DisputeRecord, VendorPayment,
   VendorLedgerResponse, PaginatedResponse,
   
@@ -143,8 +143,8 @@ export const purchaseOrdersService = {
     apiClient.get<PaginatedResponse<PurchaseOrder>>(`/api/ap/purchase-orders?${buildParams(filters)}`).then(r => r.data),
   getOne: (id: string) =>
     apiClient.get<PurchaseOrder>(`/api/ap/purchase-orders/${id}`).then(r => r.data),
-  create: (data: Partial<PurchaseOrder>) =>
-    apiClient.post<PurchaseOrder>('/api/ap/purchase-orders', data).then(r => r.data),
+  create: (data: Partial<Omit<PurchaseOrder, 'items'>> & { items: Partial<POItem>[] }) =>
+  apiClient.post('/api/ap/purchase-orders', data).then(r => r.data),
   update: (id: string, data: Partial<PurchaseOrder>) =>
     apiClient.put<PurchaseOrder>(`/api/ap/purchase-orders/${id}`, data).then(r => r.data),
   // was PATCH — backend route is POST /:id/issue
