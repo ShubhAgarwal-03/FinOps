@@ -12,9 +12,10 @@ import apiClient from '@/services/apiClient';
 import { buildParams } from '@/lib/api/query-params';
 import type {
   Vendor, Requisition, RFP, VendorQuote, QuoteEvaluation,
-  PurchaseOrder, POAmendment, GRN, VendorInvoice,
+  PurchaseOrder, POAmendment, GRN, GRNItem, VendorInvoice,
   MatchResultPayload, DisputeRecord, VendorPayment,
   VendorLedgerResponse, PaginatedResponse,
+  
 } from '@/types/ap';
 
 // ── Vendors ───────────────────────────────────────────────────────────────────
@@ -172,8 +173,8 @@ export const grnService = {
     apiClient.get<PaginatedResponse<GRN>>(`/api/ap/grn?${buildParams(filters)}`).then(r => r.data),
   getOne: (id: string) =>
     apiClient.get<GRN>(`/api/ap/grn/${id}`).then(r => r.data),
-  create: (data: { po_id: string; received_by?: string; notes?: string; items: Partial<GRN>[] }) =>
-    apiClient.post<GRN>('/api/ap/grn', data).then(r => r.data),
+  create: (data: { po_id: string; received_by?: string; notes?: string; items: Partial<GRNItem>[] }) =>
+    apiClient.post('/api/ap/grn', data).then(r => r.data),
   // NOTE: backend has no GRN update route (GRN is create-then-confirm only).
   // Left out deliberately rather than pointed at a route that doesn't exist —
   // if line-item correction before confirm is needed, that's a backend gap
