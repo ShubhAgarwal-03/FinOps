@@ -13,7 +13,7 @@ import { buildParams } from '@/lib/api/query-params';
 import type {
   Vendor, Requisition, RFP, VendorQuote, QuoteEvaluation,
   PurchaseOrder, POItem, POAmendment, GRN, GRNItem, VendorInvoice,
-  MatchResultPayload, DisputeRecord, VendorPayment,
+  MatchResultPayload, DisputeRecord, VendorPayment, RequisitionItem, 
   VendorLedgerResponse, PaginatedResponse,
   
 } from '@/types/ap';
@@ -65,8 +65,8 @@ export const requisitionsService = {
     apiClient.get<PaginatedResponse<Requisition>>(`/api/ap/requisitions?${buildParams(filters)}`).then(r => r.data),
   getOne: (id: string) =>
     apiClient.get<Requisition>(`/api/ap/requisitions/${id}`).then(r => r.data),
-  create: (data: Partial<Requisition>) =>
-    apiClient.post<Requisition>('/api/ap/requisitions', data).then(r => r.data),
+  create: (data: Partial<Omit<Requisition, 'items'>> & { items: Partial<RequisitionItem>[] }) =>
+    apiClient.post('/api/ap/requisitions', data).then(r => r.data),
   update: (id: string, data: Partial<Requisition>) =>
     apiClient.put<Requisition>(`/api/ap/requisitions/${id}`, data).then(r => r.data),
   // was: PATCH /:id/submit (404) — now routed through real /status endpoint
