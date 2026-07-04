@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
@@ -9,7 +9,7 @@ import type { PurchaseOrder } from '@/types/ap';
 const inputClass = 'border border-slate-200 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white w-full';
 const labelClass = 'text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-1';
 
-export default function NewVendorInvoicePage() {
+function NewVendorInvoicePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const poIdParam = searchParams.get('po_id');
@@ -176,5 +176,15 @@ export default function NewVendorInvoicePage() {
         </div>
       </form>
     </div>
+  );
+}
+
+
+
+export default function NewVendorInvoicePage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-sm text-slate-400">Loading…</div>}>
+      <NewVendorInvoicePageInner />
+    </Suspense>
   );
 }

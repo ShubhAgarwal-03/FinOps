@@ -5,11 +5,12 @@ import { toast } from 'sonner';
 import { Loader2, Search } from 'lucide-react';
 import { grnService, purchaseOrdersService } from '@/services/ap';
 import type { PurchaseOrder } from '@/types/ap';
+import { Suspense } from 'react';
 
 const inputClass = 'border border-slate-200 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white w-full';
 const labelClass = 'text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-1';
 
-export default function NewGRNPage() {
+function NewGRNPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const poIdParam = searchParams.get('po_id');
@@ -193,5 +194,13 @@ export default function NewGRNPage() {
         </div>
       </form>
     </div>
+    );
+}
+
+export default function NewGRNPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-sm text-slate-400">Loading…</div>}>
+      <NewGRNPageInner />
+    </Suspense>
   );
 }
