@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-//import './globals.css'; // keep this line only if you actually have a globals.css — remove if not
+import 'globals' // keep this line only if you actually have a globals.css — remove if not
 
 export const metadata: Metadata = {
   title: 'FinOps',
