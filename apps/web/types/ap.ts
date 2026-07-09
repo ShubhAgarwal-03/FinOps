@@ -1,14 +1,20 @@
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
 // AP (Accounts Payable) Types
-// Mirrors Prisma schema — uses string id (not MongoDB _id)
-// ─────────────────────────────────────────────────────────────────────────────
+// Mirrors Prisma schema — uses string `id` (not MongoDB `_id`)
+// ─────────────────────────────────────────────────────────────────────────
 
-// ── Shared ───────────────────────────────────────────────────────────────────
+// ── Shared ──────────────────────────────────────────────────────────────
 
 export type PaymentMethod = 'cash' | 'bank_transfer' | 'upi' | 'cheque' | 'card' | 'other';
 export type PaymentStatus = 'unpaid' | 'partial' | 'paid' | 'overpaid';
 
-// ── Vendor ───────────────────────────────────────────────────────────────────
+export interface TaxLine {
+  name: string;
+  percent: number;
+  tax_amount: number;
+}
+
+// ── Vendor ──────────────────────────────────────────────────────────────
 
 export interface Vendor {
   id: string;
@@ -51,7 +57,7 @@ export interface VendorSnapshot {
   pan?: string;
 }
 
-// ── Requisition ──────────────────────────────────────────────────────────────
+// ── Requisition ─────────────────────────────────────────────────────────
 
 export type RequisitionStatus =
   | 'draft'
@@ -88,7 +94,7 @@ export interface Requisition {
   items: RequisitionItem[];
 }
 
-// ── RFP ──────────────────────────────────────────────────────────────────────
+// ── RFP ─────────────────────────────────────────────────────────────────
 
 export type RFPStatus = 'open' | 'evaluating' | 'vendor_selected' | 'closed';
 
@@ -133,12 +139,9 @@ export interface RFP {
   quote_evaluations: QuoteEvaluation[];
 }
 
-// ── Purchase Order ────────────────────────────────────────────────────────────
+// ── Purchase Order ──────────────────────────────────────────────────────
 
-export type POStatus =
-  | 'draft'
-  | 'issued'
-  | 'cancelled';
+export type POStatus = 'draft' | 'issued' | 'cancelled';
 
 export interface POItem {
   id: string;
@@ -188,7 +191,7 @@ export interface PurchaseOrder {
   amendments: POAmendment[];
 }
 
-// ── GRN ──────────────────────────────────────────────────────────────────────
+// ── GRN ─────────────────────────────────────────────────────────────────
 
 export type GRNStatus = 'draft' | 'confirmed';
 
@@ -218,7 +221,7 @@ export interface GRN {
   items: GRNItem[];
 }
 
-// ── Vendor Invoice ────────────────────────────────────────────────────────────
+// ── Vendor Invoice ──────────────────────────────────────────────────────
 
 export type VendorInvoiceStatus =
   | 'draft'
@@ -230,12 +233,6 @@ export type VendorInvoiceStatus =
   | 'rejected'
   | 'paid'
   | 'void';
-
-export interface TaxLine {
-  name: string;
-  percent: number;
-  tax_amount: number;
-}
 
 export interface VendorInvoiceItem {
   id: string;
@@ -285,7 +282,7 @@ export interface VendorInvoice {
   dispute_records: DisputeRecord[];
 }
 
-// ── Match ─────────────────────────────────────────────────────────────────────
+// ── Match ───────────────────────────────────────────────────────────────
 
 export type MatchStatus = 'matched' | 'mismatched';
 
@@ -309,6 +306,8 @@ export interface MatchResult {
   created_at: string;
 }
 
+// Returned directly by POST /:id/match — re-fetch the invoice with getOne()
+// afterward to read the persisted MatchResult from invoice.match_results[].
 export interface MatchResultPayload {
   vendor_invoice_id: string;
   grn_id: string;
@@ -318,7 +317,7 @@ export interface MatchResultPayload {
   summary: string;
 }
 
-// ── Dispute ───────────────────────────────────────────────────────────────────
+// ── Dispute ─────────────────────────────────────────────────────────────
 
 export type DisputeStatus =
   | 'open'
@@ -344,7 +343,7 @@ export interface DisputeRecord {
   updated_at: string;
 }
 
-// ── Vendor Payment ────────────────────────────────────────────────────────────
+// ── Vendor Payment ──────────────────────────────────────────────────────
 
 export interface VendorPayment {
   id: string;
@@ -360,7 +359,7 @@ export interface VendorPayment {
   updated_at: string;
 }
 
-// ── Vendor Ledger ─────────────────────────────────────────────────────────────
+// ── Vendor Ledger ───────────────────────────────────────────────────────
 
 export type VendorLedgerEntryType = 'INVOICE_RECEIVED' | 'PAYMENT_MADE' | 'DEBIT_NOTE';
 
@@ -389,7 +388,7 @@ export interface VendorLedgerResponse {
   };
 }
 
-// ── Pagination ────────────────────────────────────────────────────────────────
+// ── Pagination ──────────────────────────────────────────────────────────
 
 export interface PaginationMeta {
   total: number;
@@ -401,4 +400,16 @@ export interface PaginationMeta {
 export interface PaginatedResponse<T> {
   data: T[];
   pagination: PaginationMeta;
+}
+
+// ── Workflow status (drives sidebar unlock/lock state) ────────────────
+
+export interface WorkflowStatus {
+  vendors: boolean;
+  requisitions: boolean;
+  rfp: boolean;
+  purchase_orders: boolean;
+  grn: boolean;
+  vendor_invoices: boolean;
+  vendor_payments: boolean;
 }

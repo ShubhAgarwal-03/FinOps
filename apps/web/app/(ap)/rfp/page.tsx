@@ -1,115 +1,88 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { Loader2, FileSearch } from 'lucide-react';
 import { rfpService } from '@/services/ap';
-import type { RFP } from '@/types/ap';
-import { Loader2, Megaphone, ChevronLeft, ChevronRight, X } from 'lucide-react';
-import { formatDate } from '../../../../../libs/shared/utils/date.utils';
+import { RFP, RFPStatus } from '@/types/ap';
+import { useWorkflowStatus } from '@/lib/hooks/useWorkflowStatus';
+import { getStepAccess } from '@/lib/workflow/stepAccess';
+import StageLockBanner from '../../../components/shared/stageLockBanner';
 
-const STATUS_BADGE: Record<string, string> = {
-  open: 'bg-blue-100 text-blue-700',
-  evaluating: 'bg-purple-100 text-purple-700',
-  vendor_selected: 'bg-green-100 text-green-700',
-  closed: 'bg-slate-100 text-slate-500',
+// PLACE AT: apps/web/app/(ap)/rfp/page.tsx
+// NOTE: RFPs are created from an approved Requisition's detail page
+// ("Create RFP" button) — there's no standalone /rfp/new route.
+
+const STATUS_BADGE: Record<RFPStatus, string> = {
+  open: 'bg-slate-100 text-slate-500',
+  evaluating: 'bg-amber-100 text-amber-700',
+  vendor_selected: 'bg-blue-100 text-blue-700',
+  closed: 'bg-green-100 text-green-700',
 };
-const STATUS_LABEL: Record<string, string> = {
-  open: 'Open',
-  evaluating: 'Evaluating',
-  vendor_selected: 'Vendor Selected',
-  closed: 'Closed',
-};
-
-
-const inputClass = 'border border-slate-200 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white';
 
 export default function RFPListPage() {
   const router = useRouter();
-  const [rfps, setRfps] = useState<RFP[]>([]);
+  const { status } = useWorkflowStatus();
+  const access = getStepAccess(status, 'rfp');
+  const [items, setItems] = useState<RFP[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, pages: 1 });
-  const [status, setStatus] = useState('');
 
-  const fetch = useCallback(async (page = 1) => {
-    setLoading(true);
-    try {
-      const data = await rfpService.getAll({ status, page, limit: pagination.limit });
-      setRfps(data.data);
-      setPagination(data.pagination);
-    } catch {
-      toast.error('Failed to load RFPs');
-    } finally {
-      setLoading(false);
-    }
-  }, [status, pagination.limit]);
-
-  useEffect(() => { fetch(1); }, [status]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await rfpService.getAll({ limit: 50 });
+        setItems(res.data);
+      } catch {
+        toast.error('Failed to load RFPs');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">RFPs</h1>
-          <p className="text-sm text-slate-500 mt-1">{pagination.total} total</p>
-        </div>
+    <div className="max-w-6xl mx-auto py-8 px-4">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-800">RFPs</h1>
+        <p className="text-sm text-slate-400 mt-1">{items.length} request{items.length !== 1 ? 's' : ''} for proposal</p>
       </div>
 
-      <div className="flex gap-3 mb-6">
-        <select value={status} onChange={e => setStatus(e.target.value)} className={inputClass}>
-          <option value="">All Statuses</option>
-          <option value="open">Open</option>
-          <option value="evaluating">Evaluating</option>
-          <option value="vendor_selected">Vendor Selected</option>
-          <option value="closed">Closed</option>
-        </select>
-        {status && (
-          <button onClick={() => setStatus('')} className="flex items-center gap-1 px-3 py-2 text-sm text-slate-600 border border-slate-200 rounded-md hover:bg-slate-50 cursor-pointer">
-            <X size={14} /> Clear
-          </button>
-        )}
-      </div>
+      {!access.unlocked && <StageLockBanner reason={access.reason} />}
 
-      {loading ? (
-        <div className="flex justify-center py-20"><Loader2 className="animate-spin text-slate-400" size={32} /></div>
-      ) : rfps.length === 0 ? (
-        <div className="text-center py-20 text-slate-500">
-          <Megaphone size={40} className="mx-auto mb-3 text-slate-300" />
-          <p className="font-medium">No RFPs yet.</p>
-          <p className="text-sm mt-1">Approve a requisition and create an RFP from it.</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        {loading ? (
+          <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-slate-300" /></div>
+        ) : items.length === 0 ? (
+          <div className="flex flex-col items-center py-16 text-slate-400">
+            <FileSearch className="w-8 h-8 mb-2" />
+            <p className="text-sm">No RFPs yet — create one from an approved requisition</p>
+          </div>
+        ) : (
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                {['RFP #', 'Title', 'Deadline', 'Quotes', 'Status'].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                ))}
+            <thead>
+              <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
+                <th className="px-5 py-3 font-medium">Number</th>
+                <th className="px-5 py-3 font-medium">Title</th>
+                <th className="px-5 py-3 font-medium">Quotes</th>
+                <th className="px-5 py-3 font-medium">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {rfps.map(rfp => (
-                <tr key={rfp.id} className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => router.push(`/rfp/${rfp.id}`)}>
-                  <td className="px-4 py-3 font-mono text-blue-600 font-medium">{rfp.rfp_number}</td>
-                  <td className="px-4 py-3 text-slate-700">{rfp.title}</td>
-                  <td className="px-4 py-3 text-slate-500">{rfp.deadline ? formatDate(rfp.deadline) : '—'}</td>
-                  <td className="px-4 py-3 text-slate-500">{rfp.vendor_quotes?.length ?? 0}</td>
-                  <td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[rfp.status] ?? 'bg-slate-100 text-slate-500'}`}>{STATUS_LABEL[rfp.status] ?? rfp.status}</span></td>
+            <tbody>
+              {items.map(r => (
+                <tr key={r.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer" onClick={() => router.push(`/rfp/${r.id}`)}>
+                  <td className="px-5 py-3 font-medium text-slate-700">{r.rfp_number}</td>
+                  <td className="px-5 py-3 text-slate-600">{r.title}</td>
+                  <td className="px-5 py-3 text-slate-500">{r.vendor_quotes?.length ?? 0}</td>
+                  <td className="px-5 py-3">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[r.status]}`}>{r.status.replace(/_/g, ' ')}</span>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {pagination.pages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200">
-              <p className="text-sm text-slate-500">Page {pagination.page} of {pagination.pages}</p>
-              <div className="flex gap-2">
-                <button onClick={() => fetch(pagination.page - 1)} disabled={pagination.page <= 1} className="p-1.5 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"><ChevronLeft size={16} /></button>
-                <button onClick={() => fetch(pagination.page + 1)} disabled={pagination.page >= pagination.pages} className="p-1.5 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40 cursor-pointer"><ChevronRight size={16} /></button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

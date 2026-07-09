@@ -1,83 +1,63 @@
 'use client';
-import { Suspense, useEffect, useState } from 'react';
+
+import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { Loader2, Lock, CreditCard } from 'lucide-react';
-import { vendorPaymentsService, vendorInvoicesService } from '@/services/ap';
-import type { VendorInvoice } from '@/types/ap';
-import { formatCurrency } from '../../../../../../libs/shared/utils/currency.utils';
-import { formatDate } from '../../../../../../libs/shared/utils/date.utils';
+import { ArrowLeft, Loader2, Lock } from 'lucide-react';
+import { vendorInvoicesService, vendorPaymentsService } from '@/services/ap';
+import { VendorInvoice, PaymentMethod } from '@/types/ap';
 
-const METHOD_LABELS: Record<string, string> = {
-  cash: 'Cash', bank_transfer: 'Bank Transfer', upi: 'UPI',
-  cheque: 'Cheque', card: 'Card', other: 'Other',
-};
+// PLACE AT: apps/web/app/(ap)/vendor-payments/new/page.tsx
+// Gated: only reachable in a useful state when ?vendor_invoice_id= points
+// at an invoice whose status is 'approved' — matched AND finance-approved.
+// If it isn't, the form is withheld and a lock message explains why.
 
-const inputClass = 'border border-slate-200 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white w-full';
-const labelClass = 'text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-1';
+function fmt(n: number) { return `₹${n.toLocaleString('en-IN')}`; }
 
-function NewVendorPaymentPageInner() {
+export default function NewVendorPaymentPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const invoiceIdParam = searchParams.get('invoice_id');
+  const invoiceId = searchParams.get('vendor_invoice_id') || '';
 
-  const [invoices, setInvoices] = useState<VendorInvoice[]>([]);
-  const [selected, setSelected] = useState<VendorInvoice | null>(null);
+  const [invoice, setInvoice] = useState<VendorInvoice | null>(null);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({
-    amount: '',
-    method: 'bank_transfer',
-    paid_at: new Date().toISOString().split('T')[0],
-    payment_ref: '',
-    notes: '',
-  });
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    vendorInvoicesService.getAll({ status: 'approved', limit: 100 })
-      .then(r => {
-        // Only show invoices with remaining balance
-        const payable = r.data.filter((inv: VendorInvoice) => inv.payment_status !== 'paid');
-        setInvoices(payable);
-        if (invoiceIdParam) {
-          const match = payable.find((inv: VendorInvoice) => inv.id === invoiceIdParam);
-          if (match) {
-            setSelected(match);
-            setForm(p => ({ ...p, amount: String(match.balance_due ?? match.total) }));
-          }
-        }
-      })
-      .catch(() => toast.error('Failed to load approved invoices'))
-      .finally(() => setLoading(false));
-  }, [invoiceIdParam]);
+  const [amount, setAmount] = useState('');
+  const [method, setMethod] = useState<PaymentMethod>('bank_transfer');
+  const [paidAt, setPaidAt] = useState(() => new Date().toISOString().slice(0, 10));
+  const [notes, setNotes] = useState('');
 
-  function selectInvoice(inv: VendorInvoice) {
-    setSelected(inv);
-    setForm(p => ({ ...p, amount: String(inv.balance_due ?? inv.total) }));
-  }
+  useEffect(() => {
+    if (!invoiceId) { setLoading(false); return; }
+    (async () => {
+      try {
+        const inv = await vendorInvoicesService.getOne(invoiceId);
+        setInvoice(inv);
+        setAmount(String(inv.balance_due ?? inv.total));
+      } catch {
+        toast.error('Failed to load invoice');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [invoiceId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!selected) { toast.error('Select an invoice'); return; }
-    const amount = parseFloat(form.amount);
-    if (!amount || amount <= 0) { toast.error('Enter a valid amount'); return; }
-    const balance = selected.balance_due ?? selected.total;
-    if (amount > balance + 0.01) {
-      toast.error(`Amount exceeds balance due (${fmt(balance)})`);
-      return;
-    }
+    if (!invoice) return;
+    if (!amount || Number(amount) <= 0) { toast.error('Enter a valid amount'); return; }
     setSaving(true);
     try {
       await vendorPaymentsService.create({
-        vendor_invoice_id: selected.id,
-        amount,
-        method: form.method as 'cash' | 'bank_transfer' | 'upi' | 'cheque' | 'card' | 'other',
-        paid_at: form.paid_at || undefined,
-        payment_ref: form.payment_ref || undefined,
-        notes: form.notes || undefined,
+        vendor_invoice_id: invoice.id,
+        amount: Number(amount),
+        method,
+        paid_at: paidAt,
+        notes: notes || undefined,
       });
-      toast.success('Payment recorded.');
-      router.push('/vendor-payments');
+      toast.success('Payment recorded');
+      router.push(`/vendor-invoices/${invoice.id}`);
     } catch {
       toast.error('Failed to record payment');
     } finally {
@@ -85,130 +65,69 @@ function NewVendorPaymentPageInner() {
     }
   }
 
-  const fmt = (n: number) => selected
-    ? formatCurrency(n, selected.vendor_snapshot?.currency ?? 'INR', selected.vendor_snapshot?.country ?? 'IN')
-    : `₹${n.toFixed(2)}`;
+  if (loading) return <div className="flex justify-center py-24"><Loader2 className="w-6 h-6 animate-spin text-slate-300" /></div>;
 
-  if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-slate-400" size={32} /></div>;
+  // Gate: no invoice id, invoice not found, or invoice not yet approved
+  if (!invoiceId || !invoice || invoice.status !== 'approved') {
+    return (
+      <div className="max-w-lg mx-auto py-16 px-4 text-center">
+        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+          <Lock className="w-5 h-5 text-slate-400" />
+        </div>
+        <h1 className="text-lg font-semibold text-slate-800 mb-2">Payment not available yet</h1>
+        <p className="text-sm text-slate-500 mb-6">
+          {!invoiceId
+            ? 'Open an approved vendor invoice and use "Record Payment" to get here.'
+            : `This invoice is ${invoice?.status ?? 'not found'} — payment unlocks once it's matched and Finance-approved.`}
+        </p>
+        <button onClick={() => router.push('/vendor-invoices')} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-md hover:bg-slate-50 cursor-pointer">
+          Back to Vendor Invoices
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Record Vendor Payment</h1>
-        <p className="text-sm text-slate-500 mt-1">Only Finance-approved invoices with outstanding balances appear here.</p>
-      </div>
+    <div className="max-w-lg mx-auto py-8 px-4">
+      <button onClick={() => router.push(`/vendor-invoices/${invoice.id}`)} className="flex items-center gap-1 text-sm text-slate-400 hover:text-slate-600 mb-4 cursor-pointer">
+        <ArrowLeft className="w-4 h-4" /> {invoice.invoice_number}
+      </button>
+      <h1 className="text-2xl font-bold text-slate-800 mb-1">Record Payment</h1>
+      <p className="text-sm text-slate-400 mb-6">{invoice.vendor?.vendor_name} · Invoice total {fmt(invoice.total)}</p>
 
-      {invoices.length === 0 ? (
-        <div className="text-center py-20 bg-white border border-slate-200 rounded-lg">
-          <Lock size={36} className="mx-auto mb-3 text-slate-300" />
-          <p className="font-medium text-slate-700">No payable invoices</p>
-          <p className="text-sm text-slate-400 mt-1">
-            Vendor invoices must be matched and Finance-approved before payment can be recorded.
-          </p>
-          <button
-            onClick={() => router.push('/vendor-invoices')}
-            className="mt-4 text-sm text-blue-600 hover:underline cursor-pointer"
-          >
-            View Vendor Invoices →
+      <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Amount *</label>
+          <input type="number" required value={amount} onChange={e => setAmount(e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Method</label>
+          <select value={method} onChange={e => setMethod(e.target.value as PaymentMethod)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200">
+            <option value="bank_transfer">Bank Transfer</option>
+            <option value="upi">UPI</option>
+            <option value="cheque">Cheque</option>
+            <option value="cash">Cash</option>
+            <option value="card">Card</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Date</label>
+          <input type="date" value={paidAt} onChange={e => setPaidAt(e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200" />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Notes</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200" />
+        </div>
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" onClick={() => router.push(`/vendor-invoices/${invoice.id}`)} className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-200 rounded-md hover:bg-slate-50 cursor-pointer">
+            Cancel
+          </button>
+          <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 cursor-pointer">
+            {saving && <Loader2 className="w-4 h-4 animate-spin" />} Record Payment & Close
           </button>
         </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Invoice Selection */}
-          <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
-            <h2 className="text-sm font-bold text-slate-700">Select Invoice</h2>
-            {selected ? (
-              <div className="flex items-start justify-between bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-                <div>
-                  <p className="font-mono font-semibold text-blue-700 text-sm">{selected.invoice_number}</p>
-                  <p className="text-xs text-slate-600 mt-0.5">{selected.vendor_snapshot?.vendor_name}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Total {fmt(selected.total)} · Paid {fmt(selected.amount_paid ?? 0)} · Balance {fmt(selected.balance_due ?? selected.total)}
-                  </p>
-                </div>
-                <button type="button" onClick={() => setSelected(null)} className="text-xs text-blue-500 hover:text-blue-700 underline cursor-pointer">Change</button>
-              </div>
-            ) : (
-              <div className="border border-slate-200 rounded-lg overflow-hidden divide-y divide-slate-100 max-h-64 overflow-y-auto">
-                {invoices.map(inv => (
-                  <button
-                    key={inv.id}
-                    type="button"
-                    onClick={() => selectInvoice(inv)}
-                    className="w-full text-left px-4 py-3 hover:bg-slate-50 cursor-pointer"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="font-mono font-semibold text-blue-600 text-sm">{inv.invoice_number}</span>
-                        <span className="text-slate-500 text-sm ml-2">— {inv.vendor_snapshot?.vendor_name}</span>
-                      </div>
-                      <div className="text-right text-xs">
-                        <p className="text-slate-500">Due: <span className="font-semibold text-red-600">{formatCurrency(inv.balance_due ?? inv.total, inv.vendor_snapshot?.currency ?? 'INR', 'IN')}</span></p>
-                        {inv.due_date && <p className="text-slate-400">{formatDate(inv.due_date)}</p>}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Payment form */}
-          {selected && (
-            <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
-              <h2 className="text-sm font-bold text-slate-700">Payment Details</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}>Amount * (max {fmt(selected.balance_due ?? selected.total)})</label>
-                  <input
-                    type="number" min="0.01" step="0.01"
-                    value={form.amount}
-                    onChange={e => setForm(p => ({ ...p, amount: e.target.value }))}
-                    className={inputClass}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>Method</label>
-                  <select value={form.method} onChange={e => setForm(p => ({ ...p, method: e.target.value }))} className={inputClass}>
-                    {Object.entries(METHOD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelClass}>Payment Date</label>
-                  <input type="date" value={form.paid_at} onChange={e => setForm(p => ({ ...p, paid_at: e.target.value }))} className={inputClass} />
-                </div>
-                <div>
-                  <label className={labelClass}>Payment Reference</label>
-                  <input value={form.payment_ref} onChange={e => setForm(p => ({ ...p, payment_ref: e.target.value }))} className={inputClass} placeholder="UTR / cheque number…" />
-                </div>
-                <div className="col-span-2">
-                  <label className={labelClass}>Notes</label>
-                  <input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className={inputClass} placeholder="Optional notes…" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => router.back()} className="px-4 py-2 text-sm rounded-md border border-slate-200 hover:bg-slate-50 cursor-pointer">Cancel</button>
-            {selected && (
-              <button type="submit" disabled={saving} className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white text-sm font-semibold rounded-md hover:bg-green-700 disabled:opacity-60 cursor-pointer">
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
-                Record Payment
-              </button>
-            )}
-          </div>
-        </form>
-      )}
+      </form>
     </div>
-  );
-}
-
-export default function NewVendorPaymentPage() {
-  return (
-    <Suspense fallback={<div className="p-8 text-sm text-slate-400">Loading…</div>}>
-      <NewVendorPaymentPageInner />
-    </Suspense>
   );
 }

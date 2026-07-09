@@ -1,17 +1,12 @@
 'use client';
+
 import { useEffect, useState } from 'react';
-import apiClient from '@/services/apiClient';
+import { workflowService } from '@/services/ap';
+import { WorkflowStatus } from '@/types/ap';
 
-export interface WorkflowStatus {
-  vendors: boolean;
-  requisitions: boolean;
-  rfp: boolean;
-  purchase_orders: boolean;
-  grn: boolean;
-  vendor_invoices: boolean;
-  vendor_payments: boolean;
-}
-
+// Vendors and requisitions are always reachable — everything else unlocks
+// once a prior stage has a qualifying record. This is also the fallback if
+// GET /api/ap/workflow-status isn't built on the backend yet.
 const DEFAULT_STATUS: WorkflowStatus = {
   vendors: true,
   requisitions: true,
@@ -27,11 +22,15 @@ export function useWorkflowStatus() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiClient
-      .get<WorkflowStatus>('/api/ap/workflow-status')
-      .then(r => setStatus(r.data))
-      .catch(() => setStatus(DEFAULT_STATUS))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    workflowService
+      .getStatus()
+      .then((data: Partial<WorkflowStatus>) => {
+        if (!cancelled) setStatus({ ...DEFAULT_STATUS, ...data });
+      })
+      .catch(() => { if (!cancelled) setStatus(DEFAULT_STATUS); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   return { status, loading };
