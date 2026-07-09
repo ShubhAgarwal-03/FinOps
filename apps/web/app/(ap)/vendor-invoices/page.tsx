@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Loader2, ReceiptText } from 'lucide-react';
@@ -30,19 +30,40 @@ function fmt(n: number) {
   return `₹${n.toLocaleString('en-IN')}`;
 }
 
+// Default export: wraps the list in Suspense, since useSearchParams()
+// requires a Suspense boundary for static prerendering to succeed.
 export default function VendorInvoicesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+        </div>
+      }
+    >
+      <VendorInvoicesList />
+    </Suspense>
+  );
+}
+
+function VendorInvoicesList() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { status } = useWorkflowStatus();
   const access = getStepAccess(status, 'vendor_invoices');
+
   const [items, setItems] = useState<VendorInvoice[]>([]);
   const [loading, setLoading] = useState(true);
+
   const initialStatus = searchParams.get('status') || '';
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await vendorInvoicesService.getAll({ status: initialStatus || undefined, limit: 50 });
+        const res = await vendorInvoicesService.getAll({
+          status: initialStatus || undefined,
+          limit: 50,
+        });
         setItems(res.data);
       } catch {
         toast.error('Failed to load vendor invoices');
@@ -53,49 +74,69 @@ export default function VendorInvoicesPage() {
   }, [initialStatus]);
 
   return (
-    <div className="max-w-6xl mx-auto py-8 px-4">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">Vendor Invoices</h1>
-        <p className="text-sm text-slate-400 mt-1">{items.length} invoice{items.length !== 1 ? 's' : ''}</p>
+    <div className="max-w-5xl mx-auto py-8 px-4">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-lg font-semibold text-slate-800">Vendor Invoices</h1>
+          <p className="text-sm text-slate-500">
+            {items.length} invoice{items.length !== 1 ? 's' : ''}
+          </p>
+        </div>
       </div>
 
       {!access.unlocked && <StageLockBanner reason={access.reason} />}
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        {loading ? (
-          <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-slate-300" /></div>
-        ) : items.length === 0 ? (
-          <div className="flex flex-col items-center py-16 text-slate-400">
-            <ReceiptText className="w-8 h-8 mb-2" />
-            <p className="text-sm">No vendor invoices yet — submit one from a confirmed GRN</p>
-          </div>
-        ) : (
+      {loading ? (
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+        </div>
+      ) : items.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center text-sm text-slate-400">
+          <ReceiptText className="w-8 h-8 mb-3 text-slate-300" />
+          No vendor invoices yet — submit one from a confirmed GRN
+        </div>
+      ) : (
+        <div className="border border-slate-200 rounded-md overflow-hidden">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
-                <th className="px-5 py-3 font-medium">Invoice</th>
-                <th className="px-5 py-3 font-medium">Vendor</th>
-                <th className="px-5 py-3 font-medium">PO</th>
-                <th className="px-5 py-3 font-medium text-right">Total</th>
-                <th className="px-5 py-3 font-medium">Status</th>
+            <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
+              <tr>
+                <th className="text-left px-4 py-2 font-medium">Invoice</th>
+                <th className="text-left px-4 py-2 font-medium">Vendor</th>
+                <th className="text-left px-4 py-2 font-medium">PO</th>
+                <th className="text-left px-4 py-2 font-medium">Total</th>
+                <th className="text-left px-4 py-2 font-medium">Status</th>
               </tr>
             </thead>
-            <tbody>
-              {items.map(inv => (
-                <tr key={inv.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer" onClick={() => router.push(`/vendor-invoices/${inv.id}`)}>
-                  <td className="px-5 py-3 font-medium text-slate-700">{inv.invoice_number}</td>
-                  <td className="px-5 py-3 text-slate-600">{inv.vendor?.vendor_name || inv.vendor_snapshot?.vendor_name}</td>
-                  <td className="px-5 py-3 text-slate-500">{inv.po?.po_number || inv.po_id}</td>
-                  <td className="px-5 py-3 text-right text-slate-700">{fmt(inv.total)}</td>
-                  <td className="px-5 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[inv.status]}`}>{inv.status}</span>
+            <tbody className="divide-y divide-slate-100">
+              {items.map((inv) => (
+                <tr
+                  key={inv.id}
+                  onClick={() => router.push(`/vendor-invoices/${inv.id}`)}
+                  className="cursor-pointer hover:bg-slate-50"
+                >
+                  <td className="px-4 py-3 font-medium text-slate-700">
+                    {inv.invoice_number}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {inv.vendor?.vendor_name || inv.vendor_snapshot?.vendor_name}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {inv.po?.po_number || inv.po_id}
+                  </td>
+                  <td className="px-4 py-3 text-slate-700">{fmt(inv.total)}</td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_BADGE[inv.status]}`}
+                    >
+                      {inv.status}
+                    </span>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
