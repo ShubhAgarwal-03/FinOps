@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Loader2, Save } from 'lucide-react';
-import { companyService } from '@/services/ar';
+import { companyService } from '../../lib/api/ar';
 import { CompanyConfig } from '../../types/ar';
 
 // PLACE AT: apps/web/app/settings/page.tsx
