@@ -132,7 +132,7 @@ export async function listPurchaseOrders(query: {
     prisma.purchaseOrder.count({ where }),
   ]);
 
-  return { purchase_orders, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+  return { data: purchase_orders, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
 }
 
 // ── Get one ───────────────────────────────────────────────────────────────

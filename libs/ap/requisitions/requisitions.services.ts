@@ -58,7 +58,7 @@ export async function listRequisitions(query: {
     prisma.requisition.count({ where }),
   ]);
 
-  return { requisitions, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+  return { data: requisitions, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
 }
 
 export async function getRequisitionById(id: string) {

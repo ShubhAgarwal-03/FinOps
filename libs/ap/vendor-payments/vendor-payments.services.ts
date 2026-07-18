@@ -44,7 +44,7 @@ export async function listVendorPayments(query: {
     prisma.vendorPayment.count({ where }),
   ]);
 
-  return { payments, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+  return { data: payments, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
 }
 
 // ── Create (gated by match + finance approval) ────────────

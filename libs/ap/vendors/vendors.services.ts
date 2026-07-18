@@ -62,7 +62,7 @@ export async function listVendors(query: VendorListQuery) {
     prisma.vendor.count({ where }),
   ]);
 
-  return { vendors, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+  return { data: vendors, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
 }
 
 // ── Get one ───────────────────────────────────────────────────────────────────

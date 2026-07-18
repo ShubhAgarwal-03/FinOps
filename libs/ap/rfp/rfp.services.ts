@@ -65,7 +65,7 @@ export async function listRfps(query: {
     prisma.rFP.count({ where }),
   ]);
 
-  return { rfps, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+  return { data: rfps, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
 }
 
 // ── Get one ───────────────────────────────────────────────────────────────────

@@ -24,7 +24,7 @@ export interface ResolveDisputeInput {
 
 // ── List ──────────────────────────────────────────────────────────────────────
 export async function listDisputes(vendor_invoice_id?: string) {
-  return prisma.disputeRecord.findMany({
+  const disputes = await prisma.disputeRecord.findMany({
     where: { ...(vendor_invoice_id && { vendor_invoice_id }) },
     include: {
       vendor_invoice: {
@@ -36,6 +36,7 @@ export async function listDisputes(vendor_invoice_id?: string) {
     },
     orderBy: { created_at: 'desc' },
   });
+  return { data: disputes, pagination: { page: 1, limit: disputes.length, total: disputes.length, pages: 1 } };
 }
 
 // ── Get one ───────────────────────────────────────────────────────────────────

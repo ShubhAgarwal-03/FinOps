@@ -94,7 +94,7 @@ export async function listVendorInvoices(query: {
     }),
     prisma.vendorInvoice.count({ where }),
   ]);
-  return { invoices, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+  return { data: invoices, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
 }
 
 export async function getVendorInvoiceById(id: string) {

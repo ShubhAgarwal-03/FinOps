@@ -61,7 +61,7 @@ export async function listGrns(query: {
     prisma.gRN.count({ where }),
   ]);
 
-  return { grns, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+  return { data: grns, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
 }
 
 // ── Get one ───────────────────────────────────────────────────────────────
