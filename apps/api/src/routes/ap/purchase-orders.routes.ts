@@ -34,10 +34,14 @@ const createPoSchema = z.object({
 const updatePoSchema = createPoSchema.omit({ vendor_id: true, rfp_id: true }).partial();
 
 const amendPoSchema = z.object({
-  reason:      z.string().min(1, 'Amendment reason is required').max(1000),
-  description: z.string().max(1000).optional(),
-  amended_by:  z.string().max(200).optional(),
-});
+  reason: z.string().min(1, 'Amendment reason is required').max(1000),
+  changes: z.array(z.object({
+    field: z.string().min(1),
+    old_value: z.unknown(),
+    new_value: z.unknown(),
+  })).min(1, 'At least one change is required'),
+  amended_by: z.string().max(200).optional(),
+}); 
 
 // GET /api/ap/purchase-orders
 router.get('/', async (req: Request, res: Response) => {
