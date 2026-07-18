@@ -137,14 +137,26 @@ export interface POFilters {
   page?: number;
   limit?: number;
 }
+// Raw tax line as entered by the user — matches poItemSchema on the backend.
+// NOT the same as TaxLine (which includes computed tax_amount, only known
+// after the backend prices the item).
+export interface POItemCreateInput {
+  item_id?: string;
+  description: string;
+  hsn_sac?: string;
+  quantity: number;
+  unit_price: number;
+  tax_lines: { name: string; percent: number }[];
+  sort_order?: number;
+}
 
 export const purchaseOrdersService = {
   getAll: (filters: POFilters = {}) =>
     apiClient.get<PaginatedResponse<PurchaseOrder>>(`/api/ap/purchase-orders?${buildParams(filters)}`).then(r => r.data),
   getOne: (id: string) =>
     apiClient.get<PurchaseOrder>(`/api/ap/purchase-orders/${id}`).then(r => r.data),
-  create: (data: Partial<Omit<PurchaseOrder, 'items'>> & { items: Partial<POItem>[] }) =>
-  apiClient.post('/api/ap/purchase-orders', data).then(r => r.data),
+  create: (data: Partial<Omit<PurchaseOrder, 'items'>> & { items: POItemCreateInput[] }) =>
+    apiClient.post<PurchaseOrder>('/api/ap/purchase-orders', data).then(r => r.data),
   update: (id: string, data: Partial<PurchaseOrder>) =>
     apiClient.put<PurchaseOrder>(`/api/ap/purchase-orders/${id}`, data).then(r => r.data),
   // was PATCH — backend route is POST /:id/issue
@@ -159,7 +171,6 @@ export const purchaseOrdersService = {
   getAmendments: (id: string) =>
     apiClient.get<POAmendment[]>(`/api/ap/purchase-orders/${id}/amendments`).then(r => r.data),
 };
-
 // ── GRN ───────────────────────────────────────────────────────────────────────
 export interface GRNFilters {
   status?: string;
