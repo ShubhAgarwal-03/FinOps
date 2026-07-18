@@ -99,6 +99,14 @@ export default function RFPDetailPage() {
             Evaluate & Select Vendor <ArrowRight size={14} />
           </button>
         )}
+        {rfp.status === 'vendor_selected' && (
+          <button
+            onClick={() => router.push(`/purchase-orders/new?rfp_id=${id}`)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 cursor-pointer"
+          >
+            Create Purchase Order <ArrowRight size={14} />
+          </button>
+      )}
       </div>
 
       {/* Meta */}
