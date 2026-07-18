@@ -22,14 +22,15 @@ const PAD_LENGTH = 6;
  *
  * Note: Prisma model accessor names are camelCase of the table name.
  */
+
 const PREFIX_CONFIG: Record<
   DocumentPrefix,
   { model: string; field: string }
 > = {
   INV:  { model: 'salesInvoice',   field: 'invoice_number'  },
   PO:   { model: 'purchaseOrder',  field: 'po_number'       },
-  GRN:  { model: 'grn',            field: 'grn_number'      },
-  RFP:  { model: 'rfp',            field: 'rfp_number'      },
+  GRN:  { model: 'gRN',            field: 'grn_number'      },  // ← fixed
+  RFP:  { model: 'rFP',            field: 'rfp_number'      },  // ← fixed
   REQ:  { model: 'requisition',    field: 'req_number'      },
   VI:   { model: 'vendorInvoice',  field: 'invoice_number'  },
   PAY:  { model: 'vendorPayment',  field: 'payment_ref'     },
