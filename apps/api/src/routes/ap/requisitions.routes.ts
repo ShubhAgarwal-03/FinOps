@@ -28,7 +28,7 @@ const updateRequisitionSchema = createRequisitionSchema.partial();
 
 // Prisma enum values are lowercase
 const statusSchema = z.object({
-  status:           z.enum(['draft', 'submitted', 'approved', 'rejected', 'converted_to_rfp']),
+  status:           z.enum(['draft', 'pending_approval', 'approved', 'rejected', 'converted_to_rfp']),
   approved_by:      z.string().max(200).optional(),
   rejection_reason: z.string().max(500).optional(),
 });
