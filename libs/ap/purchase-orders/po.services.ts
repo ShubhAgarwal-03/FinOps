@@ -314,7 +314,7 @@ export async function issuePurchaseOrder(id: string) {
   return prisma.purchaseOrder.update({
     where: { id },
     data: { status: POStatus.issued, issued_at: new Date() },
-    include: { items: true, vendor: true },
+    include: { items: true, vendor: true, amendments: true },   // ← added
   });
 }
 

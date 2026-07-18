@@ -4,18 +4,18 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { purchaseOrdersService, rfpService } from '@/services/ap';
+import { companyService } from '../../../../lib/api/ar';
 import VendorPicker from '../../../../components/ap/vendorPicker';
 import type { Vendor, RFP } from '@/types/ap';
 
-const emptyItem = () => ({ description: '', hsn_sac: '', quantity: '1', unit_price: '', sort_order: 0 });
-const inputClass = 'border border-slate-200 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white w-full';
+const emptyItem = () => ({ description: '', hsn_sac: '', quantity: '1', unit_price: '', tax_percent: '18', sort_order: 0 });
+const inputClass = 'border border-slate-200 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white w-full disabled:bg-slate-50 disabled:text-slate-400';
 const labelClass = 'text-xs font-semibold text-slate-600 uppercase tracking-wide block mb-1';
 
-function NewPOPageInner(){
+function NewPOPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rfpId = searchParams.get('rfp_id');
-
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [rfp, setRfp] = useState<RFP | null>(null);
   const [form, setForm] = useState({
@@ -24,8 +24,9 @@ function NewPOPageInner(){
   });
   const [items, setItems] = useState([emptyItem()]);
   const [saving, setSaving] = useState(false);
+  const [companyAddress, setCompanyAddress] = useState('');
+  const [sameAsCompany, setSameAsCompany] = useState(false);
 
-  // Pre-populate from RFP if coming from evaluate page
   useEffect(() => {
     if (!rfpId) return;
     rfpService.getOne(rfpId).then(r => {
@@ -38,26 +39,50 @@ function NewPOPageInner(){
           hsn_sac: '',
           quantity: '1',
           unit_price: String(selectedQuote.unit_price),
+          tax_percent: '18',
           sort_order: 0,
         }]);
       }
     }).catch(() => {});
   }, [rfpId]);
 
+  useEffect(() => {
+    companyService.get()
+      .then(c => setCompanyAddress(c?.address ?? ''))
+      .catch(() => {});
+  }, []);
+
   function setField(field: string, value: string | boolean) {
     setForm(p => ({ ...p, [field]: value }));
+  }
+
+  function toggleSameAsCompany(checked: boolean) {
+    setSameAsCompany(checked);
+    if (checked) {
+      setField('delivery_address', companyAddress);
+    }
   }
 
   function updateItem(i: number, field: string, value: string) {
     setItems(prev => prev.map((it, idx) => idx === i ? { ...it, [field]: value } : it));
   }
-
   function addItem() { setItems(p => [...p, emptyItem()]); }
   function removeItem(i: number) { if (items.length > 1) setItems(p => p.filter((_, idx) => idx !== i)); }
 
+  // ── Live totals preview ────────────────────────────────────────────────
+  // Mirrors the server's discount-then-tax order: each line's taxable value
+  // is reduced by the overall discount % first, tax is then applied on that
+  // discounted amount — matching how calculateTotals()/calculateGST() do it
+  // server-side, so this preview doesn't drift from what's actually saved.
+  const discountPct = parseFloat(form.discount_percent) || 0;
   const subtotal = items.reduce((s, it) => s + (parseFloat(it.unit_price) || 0) * (parseFloat(it.quantity) || 0), 0);
-  const discount = subtotal * (parseFloat(form.discount_percent) || 0) / 100;
-  const total = subtotal - discount;
+  const taxTotal = items.reduce((sum, it) => {
+    const base = (parseFloat(it.unit_price) || 0) * (parseFloat(it.quantity) || 0);
+    const rate = parseFloat(it.tax_percent) || 0;
+    return sum + base * (rate / 100);
+  }, 0);
+  const discount = subtotal * discountPct / 100;
+  const total = subtotal - discount + taxTotal;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -72,16 +97,19 @@ function NewPOPageInner(){
         payment_terms: form.payment_terms || undefined,
         delivery_address: form.delivery_address || undefined,
         expected_delivery: form.expected_delivery || undefined,
-        discount_percent: parseFloat(form.discount_percent) || 0,
+        discount_percent: discountPct,
         is_interstate: form.is_interstate,
-        items: items.map((it, i) => ({
-          description: it.description,
-          hsn_sac: it.hsn_sac || undefined,
-          quantity: parseFloat(it.quantity) || 1,
-          unit_price: parseFloat(it.unit_price) || 0,
-          tax_lines: [],
-          sort_order: i,
-        })),
+        items: items.map((it, i) => {
+          const rate = parseFloat(it.tax_percent) || 0;
+          return {
+            description: it.description,
+            hsn_sac: it.hsn_sac || undefined,
+            quantity: parseFloat(it.quantity) || 1,
+            unit_price: parseFloat(it.unit_price) || 0,
+            tax_lines: rate > 0 ? [{ name: 'GST', percent: rate }] : [],
+            sort_order: i,
+          };
+        }),
       });
       toast.success(`Purchase Order ${po.po_number} created.`);
       router.push(`/purchase-orders/${po.id}`);
@@ -98,7 +126,6 @@ function NewPOPageInner(){
         <h1 className="text-2xl font-bold text-slate-900">New Purchase Order</h1>
         {rfp && <p className="text-sm text-slate-500 mt-1">From RFP: {rfp.rfp_number} — {rfp.title}</p>}
       </div>
-
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Vendor */}
         <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
@@ -110,7 +137,6 @@ function NewPOPageInner(){
           </div>
         </div>
 
-        {/* Details */}
         <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
           <h2 className="text-sm font-bold text-slate-700">Order Details</h2>
           <div className="grid grid-cols-2 gap-4">
@@ -123,8 +149,29 @@ function NewPOPageInner(){
               <input type="date" value={form.expected_delivery} onChange={e => setField('expected_delivery', e.target.value)} className={inputClass} />
             </div>
             <div className="col-span-2">
-              <label className={labelClass}>Delivery Address</label>
-              <input value={form.delivery_address} onChange={e => setField('delivery_address', e.target.value)} className={inputClass} placeholder="Where should goods be delivered?" />
+              <div className="flex items-center justify-between mb-1">
+                <label className={labelClass}>Delivery Address</label>
+                <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={sameAsCompany}
+                    onChange={e => toggleSameAsCompany(e.target.checked)}
+                    disabled={!companyAddress}
+                    className="w-3.5 h-3.5 rounded"
+                  />
+                  Same as company address
+                </label>
+              </div>
+              <input
+                value={form.delivery_address}
+                onChange={e => setField('delivery_address', e.target.value)}
+                className={inputClass}
+                placeholder="Where should goods be delivered?"
+                disabled={sameAsCompany}
+              />
+              {sameAsCompany && !companyAddress && (
+                <p className="text-xs text-amber-600 mt-1">No company address found in Settings yet.</p>
+              )}
             </div>
             <div>
               <label className={labelClass}>Discount %</label>
@@ -158,7 +205,7 @@ function NewPOPageInner(){
                   <label className={labelClass}>Description *</label>
                   <input value={item.description} onChange={e => updateItem(i, 'description', e.target.value)} className={inputClass} placeholder="Item description" required />
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
                   <div>
                     <label className={labelClass}>HSN / SAC</label>
                     <input value={item.hsn_sac} onChange={e => updateItem(i, 'hsn_sac', e.target.value)} className={inputClass} placeholder="8471" />
@@ -171,13 +218,17 @@ function NewPOPageInner(){
                     <label className={labelClass}>Unit Price *</label>
                     <input type="number" min="0" step="0.01" value={item.unit_price} onChange={e => updateItem(i, 'unit_price', e.target.value)} className={inputClass} placeholder="0.00" />
                   </div>
+                  <div>
+                    <label className={labelClass}>Tax %</label>
+                    <input type="number" min="0" max="100" step="0.01" value={item.tax_percent} onChange={e => updateItem(i, 'tax_percent', e.target.value)} className={inputClass} placeholder="18" />
+                  </div>
                 </div>
               </div>
             ))}
           </div>
           {/* Totals */}
           <div className="px-5 py-4 bg-slate-50 border-t border-slate-200 flex justify-end">
-            <div className="space-y-1 text-sm min-w-[200px]">
+            <div className="space-y-1 text-sm min-w-[220px]">
               <div className="flex justify-between">
                 <span className="text-slate-500">Subtotal</span>
                 <span className="font-medium">₹{subtotal.toFixed(2)}</span>
@@ -188,6 +239,10 @@ function NewPOPageInner(){
                   <span>−₹{discount.toFixed(2)}</span>
                 </div>
               )}
+              <div className="flex justify-between">
+                <span className="text-slate-500">Tax ({form.is_interstate ? 'IGST' : 'CGST + SGST'})</span>
+                <span className="font-medium">₹{taxTotal.toFixed(2)}</span>
+              </div>
               <div className="flex justify-between font-bold text-slate-900 border-t border-slate-200 pt-1 mt-1">
                 <span>Total</span>
                 <span>₹{total.toFixed(2)}</span>
@@ -207,6 +262,7 @@ function NewPOPageInner(){
     </div>
   );
 }
+
 export default function NewPOPage() {
   return (
     <Suspense fallback={<div className="p-8 text-sm text-slate-400">Loading…</div>}>

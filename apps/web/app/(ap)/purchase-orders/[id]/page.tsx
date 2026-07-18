@@ -1,5 +1,4 @@
 'use client';
-
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -8,8 +7,7 @@ import { purchaseOrdersService } from '@/services/ap';
 import { PurchaseOrder, POStatus } from '@/types/ap';
 import { isRecordLocked } from '@/lib/workflow/stepAccess';
 import ConfirmDialog from '../../../../components/shared/confirmDialog';
-
-// PLACE AT: apps/web/app/(ap)/purchase-orders/[id]/page.tsx
+import { formatDate } from '../../../../../../libs/shared/utils/date.utils';
 
 const STATUS_BADGE: Record<POStatus, string> = {
   draft: 'bg-slate-100 text-slate-500',
@@ -17,8 +15,6 @@ const STATUS_BADGE: Record<POStatus, string> = {
   cancelled: 'bg-red-100 text-red-600',
 };
 
-// Only 'draft' is actionable (issue/cancel). Once issued, the PO is locked —
-// PO Amendment is the one standing exception, never a direct edit.
 const EDITABLE_STATUSES: POStatus[] = ['draft'];
 
 function fmt(n: number) {
@@ -67,7 +63,6 @@ export default function PurchaseOrderDetailPage() {
       <button onClick={() => router.push('/purchase-orders')} className="flex items-center gap-1 text-sm text-slate-400 hover:text-slate-600 mb-4 cursor-pointer">
         <ArrowLeft className="w-4 h-4" /> Purchase Orders
       </button>
-
       <div className="flex items-center gap-3 mb-1">
         <h1 className="text-2xl font-bold text-slate-800">{po.po_number}</h1>
         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[po.status]}`}>{po.status}</span>
@@ -82,6 +77,31 @@ export default function PurchaseOrderDetailPage() {
             : 'This PO is cancelled and can no longer be changed.'}
         </div>
       )}
+
+      {/* Order details meta — matches what was collected at creation */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
+        <h2 className="text-sm font-semibold text-slate-700 mb-3">Order Details</h2>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-0.5">Payment Terms</p>
+            <p className="text-slate-900">{po.payment_terms || '—'}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-0.5">Expected Delivery</p>
+            <p className="text-slate-900">{po.expected_delivery ? formatDate(po.expected_delivery) : '—'}</p>
+          </div>
+          <div className="col-span-2">
+            <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-0.5">Delivery Address</p>
+            <p className="text-slate-900">{po.delivery_address || '—'}</p>
+          </div>
+          {po.notes && (
+            <div className="col-span-2">
+              <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-0.5">Notes</p>
+              <p className="text-slate-900">{po.notes}</p>
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
         <table className="w-full text-sm mb-4">
@@ -105,8 +125,14 @@ export default function PurchaseOrderDetailPage() {
           </tbody>
         </table>
         <div className="flex justify-end">
-          <dl className="text-sm space-y-1 w-48">
+          <dl className="text-sm space-y-1 w-52">
             <div className="flex justify-between"><dt className="text-slate-400">Subtotal</dt><dd className="text-slate-700">{fmt(po.subtotal)}</dd></div>
+            {po.discount_amount > 0 && (
+              <div className="flex justify-between text-green-700">
+                <dt>Discount ({po.discount_percent}%)</dt>
+                <dd>−{fmt(po.discount_amount)}</dd>
+              </div>
+            )}
             <div className="flex justify-between"><dt className="text-slate-400">Tax</dt><dd className="text-slate-700">{fmt(po.tax_total)}</dd></div>
             <div className="flex justify-between font-semibold pt-1 border-t border-slate-100"><dt className="text-slate-700">Total</dt><dd className="text-slate-800">{fmt(po.total)}</dd></div>
           </dl>
