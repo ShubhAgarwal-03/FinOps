@@ -23,6 +23,7 @@ export interface MatchResultPayload {
 }
 
 // ── Core algorithm ────────────────────────────────────────
+
 /**
  * 3-way match: PO qty === GRN qty === Invoice qty (exact equality, MVP).
  *
@@ -70,25 +71,29 @@ export function computeMatch(
 }
 
 // ── Persist match result + update invoice status ──────────
+
 /**
  * Fetches all required data, runs computeMatch, persists the result,
  * and updates the vendor invoice status atomically.
  *
- * GRN is fetched via the PO (not directly from vendor invoice — no such relation).
+ * The GRN to match against is the one this invoice was actually created
+ * against (VendorInvoice.grn_id — set at creation time and validated there
+ * as belonging to the same PO and being confirmed). This is a direct
+ * relation, not derived by scanning the PO's GRNs, so it stays correct
+ * even when a PO has multiple GRNs from partial/staged deliveries.
+ *
  * MatchResult stores line_item_results as a Json column (no child table).
  */
 export async function runAndPersistMatch(
   vendor_invoice_id: string
 ): Promise<MatchResultPayload> {
-
-  // 1. Load vendor invoice + its items + its PO + PO items
+  // 1. Load vendor invoice + its items + its own linked GRN + its PO items
   const invoice = await prisma.vendorInvoice.findUnique({
     where:   { id: vendor_invoice_id },
     include: {
       items: true,
-      po: {
-        include: { items: true, grns: { include: { items: true } } },
-      },
+      grn:   { include: { items: true } },
+      po:    { include: { items: true } },
     },
   });
 
@@ -96,24 +101,29 @@ export async function runAndPersistMatch(
     throw Object.assign(new Error('Vendor invoice not found'), { statusCode: 404 });
   }
 
-  // 2. Use void instead of cancelled — matches your VendorInvoiceStatus enum
   if (invoice.status === VendorInvoiceStatus.void) {
     throw Object.assign(new Error('Cannot match a voided invoice'), { statusCode: 409 });
   }
 
-  // 3. GRN lives on the PO, not on the invoice — find the confirmed GRN
-  const confirmedGrn = invoice.po.grns.find((g) => g.status === 'confirmed');
-  if (!confirmedGrn) {
+  // 2. GRN is now a direct relation on the invoice itself — no ambiguity
+  //    when a PO has multiple GRNs from separate/partial deliveries.
+  if (!invoice.grn) {
     throw Object.assign(
-      new Error('No confirmed GRN found for this PO. Confirm the GRN before matching.'),
+      new Error('This invoice has no linked GRN. It cannot be matched.'),
+      { statusCode: 409 }
+    );
+  }
+  if (invoice.grn.status !== 'confirmed') {
+    throw Object.assign(
+      new Error('Linked GRN is not confirmed. Confirm the GRN before matching.'),
       { statusCode: 409 }
     );
   }
 
-  // 4. Run the algorithm
+  // 3. Run the algorithm
   const itemResults = computeMatch(
     invoice.po.items,
-    confirmedGrn.items,
+    invoice.grn.items,
     invoice.items, // VendorInvoiceItem[] — uses quantity_billed internally
   );
 
@@ -127,7 +137,7 @@ export async function runAndPersistMatch(
         mismatches.map((m) => `${m.description} — ${m.discrepancy_note}`).join(' | ')
       }`;
 
-  // 5. Persist in a transaction
+  // 4. Persist in a transaction
   //    - MatchResult has NO child table — line_item_results is a Json column
   //    - MatchResult has NO po_id, overall_matched, or summary columns per schema
   await prisma.$transaction(async (tx) => {
@@ -138,10 +148,10 @@ export async function runAndPersistMatch(
     await tx.matchResult.create({
       data: {
         vendor_invoice_id,
-        grn_id:           confirmedGrn.id,
-        status:           matchStatus,
+        grn_id:            invoice.grn!.id,
+        status:            matchStatus,
         line_item_results: itemResults as unknown as Prisma.InputJsonValue, // Json column
-        matched_at:       new Date(),
+        matched_at:        new Date(),
       },
     });
 
@@ -158,10 +168,10 @@ export async function runAndPersistMatch(
 
   return {
     vendor_invoice_id,
-    grn_id:         confirmedGrn.id,
-    status:         matchStatus,
+    grn_id:          invoice.grn.id,
+    status:          matchStatus,
     overall_matched,
-    item_results:   itemResults,
+    item_results:    itemResults,
     summary,
   };
 }

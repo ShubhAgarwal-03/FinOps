@@ -164,6 +164,7 @@ export async function createVendorInvoice(input: CreateVendorInvoiceInput) {
       vendor_id:         po.vendor_id,
       vendor_snapshot:   vendor_snapshot as unknown as Prisma.InputJsonValue,
       po_id:             input.po_id,
+      grn_id:            input.grn_id,
       vendor_ref_number: input.vendor_ref_number,
       issue_date:        input.issue_date ?? new Date(),
       due_date:          input.due_date ?? null,

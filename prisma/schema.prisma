@@ -578,6 +578,7 @@ model GRN {
 
   items         GRNItem[]
   match_results MatchResult[]
+  vendor_invoices VendorInvoice[] 
 
   @@index([po_id])
   @@index([status])
@@ -611,6 +612,8 @@ model VendorInvoice {
   invoice_number    String              @unique
   po_id             String
   po                PurchaseOrder       @relation(fields: [po_id], references: [id])
+  grn_id            String                                    
+  grn               GRN                 @relation(fields: [grn_id], references: [id])  
   vendor_id         String
   vendor            Vendor              @relation(fields: [vendor_id], references: [id])
   // Point-in-time copy of vendor
