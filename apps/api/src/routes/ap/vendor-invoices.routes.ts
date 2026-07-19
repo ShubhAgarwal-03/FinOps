@@ -23,7 +23,7 @@ const createVendorInvoiceSchema = z.object({
   po_id:             z.string().min(1, 'Invalid PO ID'),
   grn_id:            z.string().min(1, 'Invalid GRN ID'),
   vendor_ref_number: z.string().max(100).optional(),
-  invoice_date:      z.coerce.date().optional(),
+  invoice_date:      z.coerce.date().max(new Date(), 'Invoice date cannot be in the future').optional(),
   due_date:          z.coerce.date().optional(),
   is_interstate:     z.boolean().default(true),
   discount_percent:  z.number().min(0).max(100).default(0),

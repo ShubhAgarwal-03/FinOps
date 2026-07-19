@@ -205,13 +205,23 @@ export interface VendorInvoiceFilters {
   limit?: number;
 }
 
+export interface VendorInvoiceItemCreateInput {
+  po_item_id: string;
+  description: string;
+  hsn_sac?: string;
+  quantity_billed: number;
+  unit_price: number;
+  tax_lines: { name: string; percent: number }[];
+  sort_order?: number;
+}
+
 export const vendorInvoicesService = {
   getAll: (filters: VendorInvoiceFilters = {}) =>
     apiClient.get<PaginatedResponse<VendorInvoice>>(`/api/ap/vendor-invoices?${buildParams(filters)}`).then(r => r.data),
   getOne: (id: string) =>
     apiClient.get<VendorInvoice>(`/api/ap/vendor-invoices/${id}`).then(r => r.data),
-  create: (data: Partial<Omit<VendorInvoice, 'items'>> & { items: Partial<VendorInvoiceItem>[] }) =>
-    apiClient.post('/api/ap/vendor-invoices', data).then(r => r.data),
+  create: (data: Partial<Omit<VendorInvoice, 'items'>> & { grn_id: string; items: VendorInvoiceItemCreateInput[] }) =>
+    apiClient.post<VendorInvoice>('/api/ap/vendor-invoices', data).then(r => r.data),
   update: (id: string, data: Partial<VendorInvoice>) =>
     apiClient.put<VendorInvoice>(`/api/ap/vendor-invoices/${id}`, data).then(r => r.data),
   // was PATCH — backend route is POST /:id/submit

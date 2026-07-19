@@ -2,7 +2,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 import { vendorInvoicesService, purchaseOrdersService } from '@/services/ap';
 import type { PurchaseOrder } from '@/types/ap';
 
@@ -13,9 +13,10 @@ function NewVendorInvoicePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const poIdParam = searchParams.get('po_id');
+  const grnIdParam = searchParams.get('grn_id');
 
-  const [pos, setPos] = useState<PurchaseOrder[]>([]);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [loading, setLoading] = useState(true);
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [form, setForm] = useState({
     vendor_ref_number: '',
@@ -26,35 +27,29 @@ function NewVendorInvoicePageInner() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    purchaseOrdersService.getAll({ status: 'issued', limit: 100 })
-      .then(r => {
-        setPos(r.data);
-        if (poIdParam) {
-          const po = r.data.find((p: PurchaseOrder) => p.id === poIdParam);
-          if (po) loadPO(po);
-        }
-      }).catch(() => {});
-  }, [poIdParam]);
-
-  async function loadPO(po: PurchaseOrder) {
-    try {
-      const full = await purchaseOrdersService.getOne(po.id);
-      setSelectedPO(full);
-      const init: Record<string, string> = {};
-      full.items.forEach(it => { init[it.id] = String(it.quantity); });
-      setQuantities(init);
-    } catch {
-      toast.error('Failed to load PO');
+    if (!poIdParam || !grnIdParam) {
+      setLoading(false);
+      return;
     }
-  }
+    purchaseOrdersService.getOne(poIdParam)
+      .then(full => {
+        setSelectedPO(full);
+        const init: Record<string, string> = {};
+        full.items.forEach(it => { init[it.id] = String(it.quantity); });
+        setQuantities(init);
+      })
+      .catch(() => toast.error('Failed to load PO'))
+      .finally(() => setLoading(false));
+  }, [poIdParam, grnIdParam]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedPO) { toast.error('Select a Purchase Order'); return; }
+    if (!selectedPO || !grnIdParam) return;
     setSaving(true);
     try {
       const inv = await vendorInvoicesService.create({
         po_id: selectedPO.id,
+        grn_id: grnIdParam,
         vendor_id: selectedPO.vendor_id,
         vendor_ref_number: form.vendor_ref_number || undefined,
         issue_date: form.issue_date,
@@ -80,106 +75,123 @@ function NewVendorInvoicePageInner() {
     }
   }
 
+  if (loading) {
+    return <div className="flex justify-center py-24"><Loader2 className="w-6 h-6 animate-spin text-slate-300" /></div>;
+  }
+
+  // Guided-workflow guard — vendor invoices must originate from a confirmed
+  // GRN. Landing here without both po_id and grn_id means someone reached
+  // this URL directly rather than through "Submit Vendor Invoice" on a
+  // confirmed GRN's detail page.
+  if (!poIdParam || !grnIdParam) {
+    return (
+      <div className="max-w-lg mx-auto py-16 px-4 text-center">
+        <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-3" />
+        <h1 className="text-lg font-semibold text-slate-800 mb-1">No GRN selected</h1>
+        <p className="text-sm text-slate-500 mb-6">
+          Vendor invoices must be submitted from a confirmed GRN. Go to the GRN you received goods against and click "Submit Vendor Invoice" there.
+        </p>
+        <button
+          onClick={() => router.push('/grn')}
+          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 cursor-pointer"
+        >
+          Go to GRNs
+        </button>
+      </div>
+    );
+  }
+
+  if (!selectedPO) return null;
+
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Submit Vendor Invoice</h1>
         <p className="text-sm text-slate-500 mt-1">Enter what the vendor has billed. This will be matched against the PO and GRN.</p>
       </div>
-
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* PO Selection */}
         <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
           <h2 className="text-sm font-bold text-slate-700">Purchase Order</h2>
-          {selectedPO ? (
-            <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-              <span className="font-mono font-semibold text-blue-700">{selectedPO.po_number} — {selectedPO.vendor_snapshot?.vendor_name}</span>
-              <button type="button" onClick={() => setSelectedPO(null)} className="text-xs text-blue-500 hover:text-blue-700 underline cursor-pointer">Change</button>
-            </div>
-          ) : (
-            <select onChange={e => { const po = pos.find(p => p.id === e.target.value); if (po) loadPO(po); }} defaultValue="" className={inputClass}>
-              <option value="" disabled>Select a Purchase Order…</option>
-              {pos.map(po => <option key={po.id} value={po.id}>{po.po_number} — {po.vendor_snapshot?.vendor_name}</option>)}
-            </select>
-          )}
+          <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+            <span className="font-mono font-semibold text-blue-700">
+              {selectedPO.po_number} — {selectedPO.vendor_snapshot?.vendor_name}
+            </span>
+          </div>
         </div>
 
-        {selectedPO && (
-          <>
-            {/* Invoice Details */}
-            <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
-              <h2 className="text-sm font-bold text-slate-700">Invoice Details</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}>Vendor Invoice Ref #</label>
-                  <input value={form.vendor_ref_number} onChange={e => setForm(p => ({ ...p, vendor_ref_number: e.target.value }))} className={inputClass} placeholder="Vendor's own invoice number" />
-                </div>
-                <div>
-                  <label className={labelClass}>Issue Date *</label>
-                  <input type="date" value={form.issue_date} onChange={e => setForm(p => ({ ...p, issue_date: e.target.value }))} className={inputClass} required />
-                </div>
-                <div>
-                  <label className={labelClass}>Due Date</label>
-                  <input type="date" value={form.due_date} onChange={e => setForm(p => ({ ...p, due_date: e.target.value }))} className={inputClass} />
-                </div>
-                <div>
-                  <label className={labelClass}>Notes</label>
-                  <input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className={inputClass} placeholder="Internal notes…" />
-                </div>
-              </div>
+        <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
+          <h2 className="text-sm font-bold text-slate-700">Invoice Details</h2>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>Vendor Invoice Ref #</label>
+              <input value={form.vendor_ref_number} onChange={e => setForm(p => ({ ...p, vendor_ref_number: e.target.value }))} className={inputClass} placeholder="Vendor's own invoice number" />
             </div>
+            <div>
+              <label className={labelClass}>Issue Date *</label>
+              <input
+                type="date"
+                value={form.issue_date}
+                max={new Date().toISOString().split('T')[0]}
+                onChange={e => setForm(p => ({ ...p, issue_date: e.target.value }))}
+                className={inputClass}
+                required
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Due Date</label>
+              <input type="date" value={form.due_date} onChange={e => setForm(p => ({ ...p, due_date: e.target.value }))} className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Notes</label>
+              <input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className={inputClass} placeholder="Internal notes…" />
+            </div>
+          </div>
+        </div>
 
-            {/* Billed quantities */}
-            <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-              <div className="px-5 py-4 border-b border-slate-100">
-                <h2 className="font-semibold text-slate-900">Quantities Billed</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Enter what the vendor has billed. PO quantity shown for reference.</p>
-              </div>
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Item</th>
-                    <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">PO Qty</th>
-                    <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Billed Qty *</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {selectedPO.items.map(item => (
-                    <tr key={item.id}>
-                      <td className="px-4 py-3 text-slate-700">{item.description}</td>
-                      <td className="px-4 py-3 text-center text-slate-500 font-mono">{item.quantity}</td>
-                      <td className="px-4 py-3 text-center">
-                        <input
-                          type="number"
-                          min="0"
-                          value={quantities[item.id] ?? ''}
-                          onChange={e => setQuantities(p => ({ ...p, [item.id]: e.target.value }))}
-                          className="border border-slate-200 rounded-md px-3 py-1.5 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500 bg-white w-24 font-mono"
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100">
+            <h2 className="font-semibold text-slate-900">Quantities Billed</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Enter what the vendor has billed. PO quantity shown for reference.</p>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Item</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">PO Qty</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Billed Qty *</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {selectedPO.items.map(item => (
+                <tr key={item.id}>
+                  <td className="px-4 py-3 text-slate-700">{item.description}</td>
+                  <td className="px-4 py-3 text-center text-slate-500 font-mono">{item.quantity}</td>
+                  <td className="px-4 py-3 text-center">
+                    <input
+                      type="number"
+                      min="0"
+                      value={quantities[item.id] ?? ''}
+                      onChange={e => setQuantities(p => ({ ...p, [item.id]: e.target.value }))}
+                      className="border border-slate-200 rounded-md px-3 py-1.5 text-sm text-center outline-none focus:ring-2 focus:ring-blue-500 bg-white w-24 font-mono"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         <div className="flex justify-end gap-3">
           <button type="button" onClick={() => router.back()} className="px-4 py-2 text-sm rounded-md border border-slate-200 hover:bg-slate-50 cursor-pointer">Cancel</button>
-          {selectedPO && (
-            <button type="submit" disabled={saving} className="px-6 py-2 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2 cursor-pointer">
-              {saving && <Loader2 size={14} className="animate-spin" />}
-              Create Invoice
-            </button>
-          )}
+          <button type="submit" disabled={saving} className="px-6 py-2 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2 cursor-pointer">
+            {saving && <Loader2 size={14} className="animate-spin" />}
+            Create Invoice
+          </button>
         </div>
       </form>
     </div>
   );
 }
-
-
 
 export default function NewVendorInvoicePage() {
   return (

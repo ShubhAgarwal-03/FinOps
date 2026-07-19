@@ -212,12 +212,22 @@ export interface VendorInvoiceFilters {
   limit?: number;
 }
 
+export interface VendorInvoiceItemCreateInput {
+  po_item_id: string;
+  description: string;
+  hsn_sac?: string;
+  quantity_billed: number;
+  unit_price: number;
+  tax_lines: { name: string; percent: number }[];
+  sort_order?: number;
+}
+
 export const vendorInvoicesService = {
   getAll: (filters: VendorInvoiceFilters = {}) =>
     apiClient.get<PaginatedResponse<VendorInvoice>>(`/api/ap/vendor-invoices?${buildParams(filters)}`).then(r => r.data),
   getOne: (id: string) =>
     apiClient.get<VendorInvoice>(`/api/ap/vendor-invoices/${id}`).then(r => r.data),
-  create: (data: Partial<VendorInvoice> & { items: Partial<VendorInvoiceItem>[] }) =>
+  create: (data: Partial<Omit<VendorInvoice, 'items'>> & { grn_id: string; items: VendorInvoiceItemCreateInput[] }) =>
     apiClient.post<VendorInvoice>('/api/ap/vendor-invoices', data).then(r => r.data),
   update: (id: string, data: Partial<VendorInvoice>) =>
     apiClient.put<VendorInvoice>(`/api/ap/vendor-invoices/${id}`, data).then(r => r.data),
@@ -232,8 +242,7 @@ export const vendorInvoicesService = {
     apiClient.post<VendorInvoice>(`/api/ap/vendor-invoices/${id}/approve`, { approved_by }).then(r => r.data),
   // was: PATCH /:id/reject (404) and PATCH /:id/void (404) — backend only
   // has POST /:id/cancel, which moves status to `void` (schema has no
-  // separate VendorInvoiceStatus.cancelled or .rejected). Both collapse
-  // to this one real endpoint.
+  // separate VendorInvoiceStatus.cancelled or .rejected). Both collapse to this one real endpoint.
   cancel: (id: string) =>
     apiClient.post<VendorInvoice>(`/api/ap/vendor-invoices/${id}/cancel`).then(r => r.data),
   delete: (id: string) =>
