@@ -4,7 +4,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { vendorInvoicesService, purchaseOrdersService } from '@/services/ap';
-import { grnService } from '@/services/ap';
 import type { PurchaseOrder } from '@/types/ap';
 
 const inputClass = 'border border-slate-200 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white w-full';
@@ -14,9 +13,9 @@ function NewVendorInvoicePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const poIdParam = searchParams.get('po_id');
-  const grnIdParam = searchParams.get('grn_id');
 
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
+  const [fullyReceived, setFullyReceived] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [form, setForm] = useState({
@@ -27,34 +26,41 @@ function NewVendorInvoicePageInner() {
   });
   const [saving, setSaving] = useState(false);
 
-
   useEffect(() => {
-  if (!poIdParam || !grnIdParam) {
-    setLoading(false);
-    return;
-  }
-  Promise.all([
-    purchaseOrdersService.getOne(poIdParam),
-    grnService.getOne(grnIdParam),
-  ])
-    .then(([po, grn]) => {
-      setSelectedPO(po);
-      const init: Record<string, string> = {};
-      grn.items.forEach(gi => { init[gi.po_item_id] = String(gi.quantity_received); });
-      setQuantities(init);
-    })
-    .catch(() => toast.error('Failed to load PO/GRN'))
-    .finally(() => setLoading(false));
-}, [poIdParam, grnIdParam]);
+    if (!poIdParam) {
+      setLoading(false);
+      return;
+    }
+    Promise.all([
+      purchaseOrdersService.getOne(poIdParam),
+      purchaseOrdersService.getFulfillment(poIdParam),
+    ])
+      .then(([po, fulfillment]) => {
+        setSelectedPO(po);
+        setFullyReceived(fulfillment.is_fully_received);
+        // Default billed quantity to what was actually received per line,
+        // not the ordered quantity — that's what the vendor should be
+        // billing for once the order is complete.
+        const receivedByPoItem = new Map(
+          fulfillment.lines.map(l => [l.po_item_id, l.received_quantity])
+        );
+        const init: Record<string, string> = {};
+        po.items.forEach(it => {
+          init[it.id] = String(receivedByPoItem.get(it.id) ?? it.quantity);
+        });
+        setQuantities(init);
+      })
+      .catch(() => toast.error('Failed to load purchase order'))
+      .finally(() => setLoading(false));
+  }, [poIdParam]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedPO || !grnIdParam) return;
+    if (!selectedPO) return;
     setSaving(true);
     try {
       const inv = await vendorInvoicesService.create({
         po_id: selectedPO.id,
-        grn_id: grnIdParam,
         vendor_id: selectedPO.vendor_id,
         vendor_ref_number: form.vendor_ref_number || undefined,
         issue_date: form.issue_date,
@@ -66,7 +72,7 @@ function NewVendorInvoicePageInner() {
           description: it.description,
           hsn_sac: it.hsn_sac,
           quantity_billed: parseFloat(quantities[it.id] ?? '0') || 0,
-          unit_price: Number(it.unit_price) || 0,       //to ensure it comes as a number and not as a string.
+          unit_price: Number(it.unit_price) || 0,
           tax_lines: it.tax_lines ?? [],
           sort_order: it.sort_order,
         })),
@@ -84,35 +90,49 @@ function NewVendorInvoicePageInner() {
     return <div className="flex justify-center py-24"><Loader2 className="w-6 h-6 animate-spin text-slate-300" /></div>;
   }
 
-  // Guided-workflow guard — vendor invoices must originate from a confirmed
-  // GRN. Landing here without both po_id and grn_id means someone reached
-  // this URL directly rather than through "Submit Vendor Invoice" on a
-  // confirmed GRN's detail page.
-  if (!poIdParam || !grnIdParam) {
+  // Guided-workflow guard — vendor invoices are only reachable from a PO's
+  // own detail page, and only once that PO is fully received.
+  if (!poIdParam || !selectedPO) {
     return (
       <div className="max-w-lg mx-auto py-16 px-4 text-center">
         <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-3" />
-        <h1 className="text-lg font-semibold text-slate-800 mb-1">No GRN selected</h1>
+        <h1 className="text-lg font-semibold text-slate-800 mb-1">No purchase order selected</h1>
         <p className="text-sm text-slate-500 mb-6">
-          Vendor invoices must be submitted from a confirmed GRN. Go to the GRN you received goods against and click "Submit Vendor Invoice" there.
+          Vendor invoices must be submitted from a purchase order that has been fully received. Go to the PO and click "Submit Vendor Invoice" once all items are in.
         </p>
         <button
-          onClick={() => router.push('/grn')}
+          onClick={() => router.push('/purchase-orders')}
           className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 cursor-pointer"
         >
-          Go to GRNs
+          Go to Purchase Orders
         </button>
       </div>
     );
   }
 
-  if (!selectedPO) return null;
+  if (!fullyReceived) {
+    return (
+      <div className="max-w-lg mx-auto py-16 px-4 text-center">
+        <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-3" />
+        <h1 className="text-lg font-semibold text-slate-800 mb-1">Not fully received</h1>
+        <p className="text-sm text-slate-500 mb-6">
+          {selectedPO.po_number} hasn't received all ordered quantities yet. Record and confirm the remaining GRN(s) before submitting a vendor invoice.
+        </p>
+        <button
+          onClick={() => router.push(`/purchase-orders/${selectedPO.id}`)}
+          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 cursor-pointer"
+        >
+          Back to {selectedPO.po_number}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Submit Vendor Invoice</h1>
-        <p className="text-sm text-slate-500 mt-1">Enter what the vendor has billed. This will be matched against the PO and GRN.</p>
+        <p className="text-sm text-slate-500 mt-1">Enter what the vendor has billed. This will be matched against the PO and all confirmed GRNs.</p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-3">
@@ -156,7 +176,7 @@ function NewVendorInvoicePageInner() {
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100">
             <h2 className="font-semibold text-slate-900">Quantities Billed</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Enter what the vendor has billed. PO quantity shown for reference.</p>
+            <p className="text-xs text-slate-500 mt-0.5">Defaulted to what was actually received. PO quantity shown for reference.</p>
           </div>
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">

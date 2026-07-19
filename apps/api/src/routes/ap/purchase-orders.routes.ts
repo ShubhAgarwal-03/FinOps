@@ -63,6 +63,17 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/ap/purchase-orders/:id/fulfillment
+router.get('/:id/fulfillment', async (req: Request, res: Response) => {
+  try {
+    const fulfillment = await poService.getPurchaseOrderFulfillment(req.params.id);
+    res.json(fulfillment);
+  } catch (err: any) {
+    if (err.statusCode === 404) return res.status(404).json({ error: 'Purchase order not found' });
+    res.status(500).json({ error: 'Failed to fetch fulfillment' });
+  }
+});
+
 // GET /api/ap/purchase-orders/:id/amendments
 router.get('/:id/amendments', async (req: Request, res: Response) => {
   try {

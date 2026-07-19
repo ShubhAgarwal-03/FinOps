@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ArrowLeft, Loader2, Lock, FileEdit, PackageCheck } from 'lucide-react';
+import { ArrowLeft, Loader2, Lock, FileEdit, PackageCheck, ReceiptText } from 'lucide-react';
 import { purchaseOrdersService } from '@/services/ap';
 import { PurchaseOrder, POStatus } from '@/types/ap';
 import { isRecordLocked } from '@/lib/workflow/stepAccess';
@@ -25,13 +25,23 @@ export default function PurchaseOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [po, setPo] = useState<PurchaseOrder | null>(null);
+  const [fullyReceived, setFullyReceived] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [issueOpen, setIssueOpen] = useState(false);
 
   async function load() {
     try {
-      setPo(await purchaseOrdersService.getOne(id));
+      const data = await purchaseOrdersService.getOne(id);
+      setPo(data);
+      if (data.status === 'issued') {
+        try {
+          const fulfillment = await purchaseOrdersService.getFulfillment(id);
+          setFullyReceived(fulfillment.is_fully_received);
+        } catch {
+          setFullyReceived(false);
+        }
+      }
     } catch {
       toast.error('Failed to load purchase order');
     } finally {
@@ -78,7 +88,13 @@ export default function PurchaseOrderDetailPage() {
         </div>
       )}
 
-      {/* Order details meta — matches what was collected at creation */}
+      {po.status === 'issued' && !fullyReceived && (
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 text-sm rounded-lg px-4 py-3 mb-6">
+          <PackageCheck className="w-4 h-4 flex-shrink-0" />
+          Not fully received yet. A vendor invoice can only be submitted once all ordered quantities have been received — across one or more GRNs.
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
         <h2 className="text-sm font-semibold text-slate-700 mb-3">Order Details</h2>
         <div className="grid grid-cols-2 gap-4 text-sm">
@@ -153,7 +169,7 @@ export default function PurchaseOrderDetailPage() {
         </div>
       )}
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap">
         {po.status === 'draft' && (
           <button onClick={() => setIssueOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 cursor-pointer">
             Issue Purchase Order
@@ -167,6 +183,11 @@ export default function PurchaseOrderDetailPage() {
             <button onClick={() => router.push(`/grn/new?po_id=${po.id}`)} className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-700 text-sm font-medium rounded-md hover:bg-slate-50 cursor-pointer">
               <PackageCheck className="w-4 h-4" /> Record GRN
             </button>
+            {fullyReceived && (
+              <button onClick={() => router.push(`/vendor-invoices/new?po_id=${po.id}`)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 cursor-pointer">
+                <ReceiptText className="w-4 h-4" /> Submit Vendor Invoice
+              </button>
+            )}
           </>
         )}
       </div>

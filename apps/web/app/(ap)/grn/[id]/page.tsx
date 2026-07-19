@@ -131,10 +131,10 @@ export default function GRNDetailPage() {
       {isConfirmed && (
         <div className="flex justify-end">
           <button
-            onClick={() => router.push(`/vendor-invoices/new?grn_id=${grn.id}&po_id=${grn.po_id}`)}
-            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 cursor-pointer"
+            onClick={() => router.push(`/purchase-orders/${grn.po_id}`)}
+            className="px-4 py-2 text-sm text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
           >
-            Submit Vendor Invoice →
+            View Purchase Order →
           </button>
         </div>
       )}

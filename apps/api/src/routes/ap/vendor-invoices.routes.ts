@@ -7,12 +7,12 @@ import { runAndPersistMatch } from '../../../../../libs/ap/match-engine/match.en
 const router = Router();
 
 const vendorInvoiceItemSchema = z.object({
-  po_item_id:  z.string().min(1, 'Invalid PO item ID'),
-  description: z.string().min(1).max(500),
-  hsn_sac:     z.string().max(20).optional(),
-  quantity_billed: z.number().positive('Quantity billed must be positive'),  
-  unit_price:  z.number().nonnegative('Unit price must be non-negative'),
-  tax_lines:   z.array(z.object({
+  po_item_id:      z.string().min(1, 'Invalid PO item ID'),
+  description:     z.string().min(1).max(500),
+  hsn_sac:         z.string().max(20).optional(),
+  quantity_billed: z.number().positive('Quantity billed must be positive'),
+  unit_price:      z.number().nonnegative('Unit price must be non-negative'),
+  tax_lines:       z.array(z.object({
     name:    z.string().min(1),
     percent: z.number().min(0).max(100),
   })).default([]),
@@ -21,9 +21,9 @@ const vendorInvoiceItemSchema = z.object({
 
 const createVendorInvoiceSchema = z.object({
   po_id:             z.string().min(1, 'Invalid PO ID'),
-  grn_id:            z.string().min(1, 'Invalid GRN ID'),
+  grn_id:            z.string().optional(),        // ← now optional, audit only
   vendor_ref_number: z.string().max(100).optional(),
-  invoice_date:      z.coerce.date().max(new Date(), 'Invoice date cannot be in the future').optional(),
+  issue_date:        z.coerce.date().max(new Date(), 'Issue date cannot be in the future').optional(),
   due_date:          z.coerce.date().optional(),
   is_interstate:     z.boolean().default(true),
   discount_percent:  z.number().min(0).max(100).default(0),
@@ -31,6 +31,7 @@ const createVendorInvoiceSchema = z.object({
   payment_terms:     z.string().max(500).optional(),
   items:             z.array(vendorInvoiceItemSchema).min(1, 'At least one line item required'),
 });
+
 
 const updateVendorInvoiceSchema = z.object({
   due_date:         z.coerce.date().optional(),

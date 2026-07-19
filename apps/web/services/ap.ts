@@ -150,6 +150,19 @@ export interface POItemCreateInput {
   sort_order?: number;
 }
 
+export interface POFulfillmentLine {
+  po_item_id: string;
+  description: string;
+  ordered_quantity: number;
+  received_quantity: number;
+  is_fully_received: boolean;
+}
+export interface POFulfillment {
+  po_id: string;
+  lines: POFulfillmentLine[];
+  is_fully_received: boolean;
+}
+
 export const purchaseOrdersService = {
   getAll: (filters: POFilters = {}) =>
     apiClient.get<PaginatedResponse<PurchaseOrder>>(`/api/ap/purchase-orders?${buildParams(filters)}`).then(r => r.data),
@@ -170,6 +183,8 @@ export const purchaseOrdersService = {
     apiClient.post<POAmendment>(`/api/ap/purchase-orders/${id}/amendments`, data).then(r => r.data),
   getAmendments: (id: string) =>
     apiClient.get<POAmendment[]>(`/api/ap/purchase-orders/${id}/amendments`).then(r => r.data),
+  getFulfillment: (id: string) =>
+    apiClient.get<POFulfillment>(`/api/ap/purchase-orders/${id}/fulfillment`).then(r => r.data),
 };
 // ── GRN ───────────────────────────────────────────────────────────────────────
 export interface GRNFilters {
@@ -220,7 +235,7 @@ export const vendorInvoicesService = {
     apiClient.get<PaginatedResponse<VendorInvoice>>(`/api/ap/vendor-invoices?${buildParams(filters)}`).then(r => r.data),
   getOne: (id: string) =>
     apiClient.get<VendorInvoice>(`/api/ap/vendor-invoices/${id}`).then(r => r.data),
-  create: (data: Partial<Omit<VendorInvoice, 'items'>> & { grn_id: string; items: VendorInvoiceItemCreateInput[] }) =>
+  create: (data: Partial<Omit<VendorInvoice, 'items'>> & { grn_id?: string; items: VendorInvoiceItemCreateInput[] }) =>
     apiClient.post<VendorInvoice>('/api/ap/vendor-invoices', data).then(r => r.data),
   update: (id: string, data: Partial<VendorInvoice>) =>
     apiClient.put<VendorInvoice>(`/api/ap/vendor-invoices/${id}`, data).then(r => r.data),

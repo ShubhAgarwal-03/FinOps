@@ -12,14 +12,17 @@
 //   VendorInvoiceItem — field is quantity_billed, not quantity
 //   vendor_snapshot — Prisma Json field; VendorSnapshot must have index sig
 // ─────────────────────────────────────────────────────────────────────────────
-import { Prisma, VendorInvoiceStatus, PaymentStatus, POStatus, GRNStatus } from '@prisma/client';
+
+import { Prisma, VendorInvoiceStatus, PaymentStatus, POStatus } from '@prisma/client';
 import { prisma } from '../../../apps/api/src/config/prisma';
 import { generateDocumentNumber } from '../../shared/utils/sequential-numbering';
 import { snapshotVendor } from '../../shared/utils/snapshot.utils';
 import { calculateTotals, type LineItemInput } from '../../shared/engines/totals/totals-calculator';
 import { calculateGST } from '../../shared/engines/gst/gst-calculator';
 import { computePaymentStatusFromPayments } from '../../shared/engines/payment-status/payment-status.engine';
+import { getPurchaseOrderFulfillment } from '../purchase-orders/po.services';
 import type { TaxLine } from '../../shared/types/money.types';
+
 
 export interface VendorInvoiceItemInput {
   po_item_id: string;
@@ -33,7 +36,7 @@ export interface VendorInvoiceItemInput {
 
 export interface CreateVendorInvoiceInput {
   po_id: string;
-  grn_id: string;            // used only for pre-create validation, not stored on header
+  grn_id?: string;            // audit only — no longer required, no longer used for matching
   vendor_ref_number?: string;
   issue_date?: Date;
   due_date?: Date;
@@ -130,16 +133,25 @@ export async function createVendorInvoice(input: CreateVendorInvoiceInput) {
     );
   }
 
-  const grn = await prisma.gRN.findUnique({ where: { id: input.grn_id } });
-  if (!grn) throw Object.assign(new Error('GRN not found'), { statusCode: 404 });
-  if (grn.po_id !== input.po_id) {
-    throw Object.assign(new Error('GRN does not belong to this PO'), { statusCode: 409 });
-  }
-  if (grn.status !== GRNStatus.confirmed) {
+  // ── Gate: the PO must be FULLY received across all its confirmed GRNs
+  // before a vendor invoice can be created. This is what makes the later
+  // 3-way match meaningful — it compares the complete order, not a partial
+  // fragment that would trivially match by construction.
+  const fulfillment = await getPurchaseOrderFulfillment(input.po_id);
+  if (!fulfillment.is_fully_received) {
     throw Object.assign(
-      new Error('GRN must be CONFIRMED before recording a vendor invoice'),
+      new Error('Purchase order is not fully received yet. All ordered quantities must be received (across one or more GRNs) before a vendor invoice can be submitted.'),
       { statusCode: 409 },
     );
+  }
+
+  // If grn_id was passed, keep it purely as an audit reference — validate
+  // it belongs to this PO if provided, but it plays no role in matching.
+  if (input.grn_id) {
+    const grn = await prisma.gRN.findUnique({ where: { id: input.grn_id } });
+    if (!grn || grn.po_id !== input.po_id) {
+      throw Object.assign(new Error('GRN does not belong to this PO'), { statusCode: 409 });
+    }
   }
 
   const poItemIds = new Set(po.items.map((i) => i.id));
@@ -164,7 +176,7 @@ export async function createVendorInvoice(input: CreateVendorInvoiceInput) {
       vendor_id:         po.vendor_id,
       vendor_snapshot:   vendor_snapshot as unknown as Prisma.InputJsonValue,
       po_id:             input.po_id,
-      grn_id:            input.grn_id,
+      grn_id:            input.grn_id ?? null,
       vendor_ref_number: input.vendor_ref_number,
       issue_date:        input.issue_date ?? new Date(),
       due_date:          input.due_date ?? null,
@@ -195,6 +207,7 @@ export async function createVendorInvoice(input: CreateVendorInvoiceInput) {
     include: { items: true, vendor: true, po: true },
   });
 }
+
 
 export async function updateVendorInvoice(
   id: string,
