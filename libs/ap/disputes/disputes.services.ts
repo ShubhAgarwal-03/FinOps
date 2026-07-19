@@ -68,7 +68,7 @@ export async function createDispute(input: CreateDisputeInput) {
   });
   if (!invoice) throw Object.assign(new Error('Vendor invoice not found'), { statusCode: 404 });
 
-  if (invoice.status !== VendorInvoiceStatus.disputed) {
+  if (invoice.status !== VendorInvoiceStatus.mismatched) {
     throw Object.assign(
       new Error('Disputes can only be raised on invoices with DISPUTED status'),
       { statusCode: 409 },

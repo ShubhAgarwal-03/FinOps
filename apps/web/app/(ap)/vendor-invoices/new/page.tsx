@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { vendorInvoicesService, purchaseOrdersService } from '@/services/ap';
+import { grnService } from '@/services/ap';
 import type { PurchaseOrder } from '@/types/ap';
 
 const inputClass = 'border border-slate-200 rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white w-full';
@@ -26,21 +27,25 @@ function NewVendorInvoicePageInner() {
   });
   const [saving, setSaving] = useState(false);
 
+
   useEffect(() => {
-    if (!poIdParam || !grnIdParam) {
-      setLoading(false);
-      return;
-    }
-    purchaseOrdersService.getOne(poIdParam)
-      .then(full => {
-        setSelectedPO(full);
-        const init: Record<string, string> = {};
-        full.items.forEach(it => { init[it.id] = String(it.quantity); });
-        setQuantities(init);
-      })
-      .catch(() => toast.error('Failed to load PO'))
-      .finally(() => setLoading(false));
-  }, [poIdParam, grnIdParam]);
+  if (!poIdParam || !grnIdParam) {
+    setLoading(false);
+    return;
+  }
+  Promise.all([
+    purchaseOrdersService.getOne(poIdParam),
+    grnService.getOne(grnIdParam),
+  ])
+    .then(([po, grn]) => {
+      setSelectedPO(po);
+      const init: Record<string, string> = {};
+      grn.items.forEach(gi => { init[gi.po_item_id] = String(gi.quantity_received); });
+      setQuantities(init);
+    })
+    .catch(() => toast.error('Failed to load PO/GRN'))
+    .finally(() => setLoading(false));
+}, [poIdParam, grnIdParam]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
