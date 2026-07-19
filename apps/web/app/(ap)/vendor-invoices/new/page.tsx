@@ -61,7 +61,7 @@ function NewVendorInvoicePageInner() {
           description: it.description,
           hsn_sac: it.hsn_sac,
           quantity_billed: parseFloat(quantities[it.id] ?? '0') || 0,
-          unit_price: it.unit_price,
+          unit_price: Number(it.unit_price) || 0,       //to ensure it comes as a number and not as a string.
           tax_lines: it.tax_lines ?? [],
           sort_order: it.sort_order,
         })),

@@ -10,7 +10,7 @@ const vendorInvoiceItemSchema = z.object({
   po_item_id:  z.string().min(1, 'Invalid PO item ID'),
   description: z.string().min(1).max(500),
   hsn_sac:     z.string().max(20).optional(),
-  quantity:    z.number().positive('Quantity must be positive'),
+  quantity_billed: z.number().positive('Quantity billed must be positive'),  
   unit_price:  z.number().nonnegative('Unit price must be non-negative'),
   tax_lines:   z.array(z.object({
     name:    z.string().min(1),
