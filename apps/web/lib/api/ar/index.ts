@@ -19,13 +19,14 @@ export const customersService = {
     `${apiClient.defaults.baseURL ?? ''}/api/ar/customers/${id}/statement/pdf`,
 };
 
-// ── Catalogue Items — UNVERIFIED route, see file header ─────────────────
+// ── Catalogue Items — shared table, backed by apps/api/src/routes/items.routes.ts ──
 
 export const itemsService = {
-  getAll: () => apiClient.get<Item[]>('/api/catalogue/items').then(r => r.data),
-  create: (data: Partial<Item>) => apiClient.post<Item>('/api/catalogue/items', data).then(r => r.data),
-  update: (id: string, data: Partial<Item>) => apiClient.put<Item>(`/api/catalogue/items/${id}`, data).then(r => r.data),
-  delete: (id: string) => apiClient.delete(`/api/catalogue/items/${id}`).then(r => r.data),
+  getAll: () => apiClient.get<Item[]>('/api/items').then(r => r.data),
+  getOne: (id: string) => apiClient.get<Item>(`/api/items/${id}`).then(r => r.data),
+  create: (data: Partial<Item>) => apiClient.post<Item>('/api/items', data).then(r => r.data),
+  update: (id: string, data: Partial<Item>) => apiClient.put<Item>(`/api/items/${id}`, data).then(r => r.data),
+  delete: (id: string) => apiClient.delete(`/api/items/${id}`).then(r => r.data),
 };
 
 // ── Sales Invoices ─────────────────────────────────────────────────────
