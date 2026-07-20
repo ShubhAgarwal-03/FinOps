@@ -28,12 +28,22 @@ router.get('/:id', wrap(async (req: Request, res: Response) => {
 }));
 
 router.post('/', wrap(async (req: Request, res: Response) => {
-  const invoice = await invoiceService.createInvoice(req.body);
+  const body = {
+    ...req.body,
+    issue_date: req.body.issue_date ? new Date(req.body.issue_date) : undefined,
+    due_date: req.body.due_date ? new Date(req.body.due_date) : undefined,
+  };
+  const invoice = await invoiceService.createInvoice(body);
   res.status(201).json(invoice);
 }));
 
 router.put('/:id', wrap(async (req: Request, res: Response) => {
-  const invoice = await invoiceService.updateInvoice(req.params.id, req.body);
+  const body = {
+    ...req.body,
+    ...(req.body.issue_date !== undefined && { issue_date: req.body.issue_date ? new Date(req.body.issue_date) : undefined }),
+    ...(req.body.due_date !== undefined && { due_date: req.body.due_date ? new Date(req.body.due_date) : undefined }),
+  };
+  const invoice = await invoiceService.updateInvoice(req.params.id, body);
   res.json(invoice);
 }));
 
