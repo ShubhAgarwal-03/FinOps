@@ -1,6 +1,7 @@
 // ──────────────────────────────────────────────────────────────────────────
 
 import apiClient from '@/services/apiClient';
+import type { Invoice as ArInvoice } from '@/services/ar';
 import type {
   Customer, Item, SalesInvoice, InvoiceListResponse, InvoiceStatus,
   Payment, PaymentMethod, LedgerResponse, CompanyConfig,
@@ -78,14 +79,15 @@ export const paymentsService = {
   // recalculated amount_paid/balance_due/payment_status) in one round trip.
   record: (invoiceId: string, payload: RecordPaymentPayload) =>
     apiClient
-      .post<{ payment: Payment; invoice: SalesInvoice }>(`/api/ar/invoices/${invoiceId}/payments`, payload)
+      .post<{ payment: Payment; invoice: ArInvoice }>(`/api/ar/invoices/${invoiceId}/payments`, payload)
       .then(r => r.data),
 };
 
-// ── Company Settings — UNVERIFIED route, see services/ap note pattern ──
+// ── Company Settings — backed by apps/api/src/routes/company.routes.ts ──
+// Single settings row, upserted via POST (backend has no PUT handler).
 
 export const companyService = {
-  get: () => apiClient.get<CompanyConfig>('/api/company-settings').then(r => r.data),
+  get: () => apiClient.get<CompanyConfig>('/api/company').then(r => r.data),
   update: (data: Partial<CompanyConfig>) =>
-    apiClient.put<CompanyConfig>('/api/company-settings', data).then(r => r.data),
+    apiClient.post<CompanyConfig>('/api/company', data).then(r => r.data),
 };

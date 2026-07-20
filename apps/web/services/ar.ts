@@ -1,26 +1,50 @@
 import apiClient from './apiClient';
 import { buildParams } from '@/lib/api/query-params';
+import type { Payment } from '@/types/ar';
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'void';
 
 export interface Invoice {
   id: string;
   invoice_number: string;
+  po_so_number?: string;
   status: InvoiceStatus;
   payment_status: 'unpaid' | 'partial' | 'paid';
   issue_date: string;
   due_date?: string;
+  is_interstate?: boolean;
+  tax_exempt?: boolean;
+  subtotal: number;
+  discount_percent?: number;
+  discount_amount?: number;
+  tax_total: number;
   total: number;
   amount_paid: number;
   balance_due: number;
+  shipping_address?: string | null;
+  notes?: string;
+  payment_terms?: string;
+  terms_and_conditions?: string;
   customer_id: string;
   customer_snapshot: {
     customer_name?: string;
     company_name?: string;
-    currency?: string;
-    country?: string;
+    email?: string;
+    phone?: string;
+    billing_address_1?: string;
+    billing_address_2?: string;
+    city?: string;
+    state?: string;
+    postal_code?: string;
+    gstin?: string;
+    pan?: string;
+    currency: string;
+    country: string;
   };
   items: InvoiceItem[];
+  payments?: Payment[];
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface InvoiceItem {
